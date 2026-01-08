@@ -58,30 +58,47 @@ export default function Home() {
   };
 
   // Load CSV file
-  const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Substitua a função handleFileLoad por esta versão corrigida:
+const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split(/\r?\n/);
-      const actions: string[] = [];
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const text = event.target?.result as string;
+    const lines = text.split(/\r?\n/).filter(line => line.trim()); // Remove linhas vazias
+    const actions: string[] = [];
 
-      lines.slice(1).forEach((line) => {
-        const cols = line.split(",");
-        if (cols[0] && cols[0].toLowerCase().trim() === "ação") {
-          const actionText = cols[1]?.replace(/"/g, "").trim();
-          if (actionText) {
-            actions.push(actionText);
-          }
+    // Debug: mostra as primeiras linhas pra você ver a estrutura
+    console.log("Primeiras 5 linhas do CSV:", lines.slice(0, 5));
+
+    lines.slice(1).forEach((line, lineIndex) => { // Pula cabeçalho
+      const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/); // Split CSV mais inteligente
+      console.log(`Linha ${lineIndex + 2}:`, cols); // Debug cada linha
+
+      // Verifica se QUALQUER coluna contém "ação" (case insensitive)
+      const hasAction = cols.some(col => 
+        col && col.toLowerCase().trim().includes("ação")
+      );
+
+      if (hasAction) {
+        // Pega o texto da ação (segunda coluna ou próxima não vazia)
+        const actionText = cols[1]?.replace(/"/g, "").trim() || 
+                          cols.find(col => col && col.trim() && !col.toLowerCase().includes("ação"))?.replace(/"/g, "").trim();
+        
+        if (actionText) {
+          actions.push(actionText);
+          console.log("Ação encontrada:", actionText); // Debug
         }
-      });
+      }
+    });
 
-      setPreviousActions(actions);
-    };
-    reader.readAsText(file);
+    console.log("Total de ações encontradas:", actions.length);
+    setPreviousActions(actions);
   };
+  reader.readAsText(file, 'UTF-8'); // Força UTF-8
+};
+
 
   // Analyze with AI
   const handleAnalyze = async () => {
