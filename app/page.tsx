@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
-  "Ceará",
+  "Ceará - Apresentar Numeros de Segurança",
   "Bahia",
   "Rio Grande do Norte",
   "Minas Gerais",
