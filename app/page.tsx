@@ -12,7 +12,7 @@ const STATES = [
 ];
 
 interface ChecklistItem {
-  type: string;
+  type: string; // "Ação" ou "Apresentação"
   text: string;
   area: string;
   done: boolean;
@@ -23,7 +23,7 @@ export default function Home() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedAreas, setSelectedAreas] = useState<Record<number, string>>({});
   const [transcript, setTranscript] = useState("");
-  const [manualAction, setManualAction] = useState(""); // 👈 NOVO
+  const [manualAction, setManualAction] = useState("");
   const [objective, setObjective] = useState("");
   const [previousActions, setPreviousActions] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -58,7 +58,7 @@ export default function Home() {
       .join(":");
   };
 
-  // Load CSV file - VERSÃO CORRIGIDA
+  // Load CSV file
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -120,7 +120,7 @@ export default function Home() {
     setIsAnalyzing(false);
   };
 
-  // 👈 NOVA FUNÇÃO AÇÃO MANUAL
+  // Add manual action
   const handleAddManualAction = () => {
     if (manualAction.trim()) {
       setSuggestions(prev => [...prev, manualAction.trim()]);
@@ -144,7 +144,6 @@ export default function Home() {
     ]);
 
     setSuggestions((prev) => prev.filter((_, i) => i !== index));
-    // Limpa selectedAreas do item removido
     setSelectedAreas((prev) => {
       const newAreas = { ...prev };
       delete newAreas[index];
@@ -152,13 +151,13 @@ export default function Home() {
     });
   };
 
-  // Toggle state checkbox
+  // Toggle state checkbox (Apresentação)
   const handleToggleState = (state: string, checked: boolean) => {
     if (checked) {
       setChecklist((prev) => [
         ...prev,
         {
-          type: "Estado",
+          type: "Apresentação",
           text: state,
           area: state,
           done: true,
@@ -166,7 +165,7 @@ export default function Home() {
       ]);
     } else {
       setChecklist((prev) =>
-        prev.filter((c) => !(c.type === "Estado" && c.text === state))
+        prev.filter((c) => !(c.type === "Apresentação" && c.text === state))
       );
     }
   };
@@ -178,7 +177,7 @@ export default function Home() {
     );
   };
 
-  // Download Excel/CSV
+  // Download Excel/CSV - NOVA ESTRUTURA
   const handleDownload = () => {
     const markedItems = checklist.filter((c) => c.done);
     if (markedItems.length === 0) {
@@ -186,27 +185,29 @@ export default function Home() {
       return;
     }
 
-    const objectiveValue = objective || "Reunião Semanal de Segurança";
     const today = new Date();
-    const prazo = new Date(today);
-    prazo.setDate(prazo.getDate() + 7);
+    const dueDate = new Date(today);
+    dueDate.setDate(dueDate.getDate() + 8); // 8 dias a frente
 
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
-    let csv = "TIPO,DESCRIÇÃO,ÁREA,DATA,PRAZO,STATUS,OBJETIVO,TEMPO\n";
+    // 👈 NOVA ESTRUTURA DE COLUNAS
+    let csv = "Entradas,\"Saídas: Decisões e ações\",Responsável,Data,Status\n";
 
     markedItems.forEach((c) => {
-      csv += `${c.type},"${c.text}",${c.area},${formatDate(
-        today
-      )},${formatDate(prazo)},Concluído,"${objectiveValue}",${formatTime(
-        seconds
-      )}\n`;
+      const entradas = c.type; // "Ação" ou "Apresentação"
+      const saidas = c.text; // Descrição da ação
+      const responsavel = c.area; // Estado/Responsável
+      const data = formatDate(dueDate); // 8 dias a frente
+      const status = c.done ? "Concluído" : "Pendente"; // Status baseado no done
+
+      csv += `"${entradas}","${saidas}","${responsavel}","${data}","${status}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `ATA_REUNIAO_${formatDate(today)}.csv`;
+    a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
     a.click();
   };
 
@@ -306,7 +307,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 👈 SEÇÃO TRANSCRIÇÃO ATUALIZADA COM AÇÃO MANUAL */}
+        {/* Transcrição */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Transcrição da Reunião
@@ -320,7 +321,7 @@ export default function Home() {
                 className="w-full h-44 p-4 border-2 border-gray-200 rounded-xl resize-y focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
               
-              {/* 👈 BOTÕES LADO A LADO */}
+              {/* Botões lado a lado */}
               <div className="flex gap-3 mt-3">
                 <button
                   onClick={handleAnalyze}
@@ -339,7 +340,7 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* 👈 INPUT AÇÃO MANUAL */}
+              {/* Input ação manual */}
               <input
                 type="text"
                 value={manualAction}
@@ -421,7 +422,7 @@ export default function Home() {
         {/* Checklist Final */}
         <section className="p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Checklist Final da Ata ({markedItems.length} itens)
+            Checklist Final do Relatório ({markedItems.length} itens)
           </h3>
           {markedItems.length === 0 ? (
             <p className="text-center py-5 text-gray-500">
@@ -461,7 +462,7 @@ export default function Home() {
             disabled={markedItems.length === 0}
             className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            📥 Baixar ATA ({markedItems.length} itens)
+            📥 Baixar Relatório ({markedItems.length} itens)
           </button>
         </section>
       </div>
