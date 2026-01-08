@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
@@ -77,21 +78,22 @@ export default function Home() {
 
       lines.slice(1).forEach((line) => {
         const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-        
-        // Procura por coluna com "ação"
+
         const actionIndex = cols.findIndex(
           (col) => col && col.toLowerCase().trim().includes("ação")
         );
 
         if (actionIndex !== -1) {
-          const actionText = cols[actionIndex + 1]?.replace(/"/g, "").trim();
-          // Procura por responsável (área/estado) - geralmente na 3ª coluna
-          const responsavel = cols[2]?.replace(/"/g, "").trim() || "Não definido";
+          const actionText = cols[actionIndex + 1]
+            ?.replace(/"/g, "")
+            .trim();
+          const responsavel =
+            cols[2]?.replace(/"/g, "").trim() || "Não definido";
 
           if (actionText) {
             actions.push({
               action: actionText,
-              responsavel: responsavel,
+              responsavel,
             });
           }
         }
@@ -134,11 +136,11 @@ export default function Home() {
     }
   };
 
-  // Approve action - agora verifica o status
+  // Approve action
   const handleApprove = (index: number) => {
     const action = suggestions[index];
     const area = selectedAreas[index] || STATES[0];
-    const status = selectedStatus[index] || "Concluído"; // Default Concluído
+    const status = selectedStatus[index] || "Concluído";
 
     setChecklist((prev) => [
       ...prev,
@@ -199,11 +201,10 @@ export default function Home() {
 
     const today = new Date();
     const dueDate = new Date(today);
-    dueDate.setDate(dueDate.getDate() + 8); // 8 dias à frente
+    dueDate.setDate(dueDate.getDate() + 8);
 
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
-    // Cabeçalho novo
     let csv =
       'Entradas,"Saídas: Decisões e ações",Responsável,Data,Status\n';
 
@@ -224,24 +225,33 @@ export default function Home() {
     a.click();
   };
 
-  // Todos os itens (concluídos e pendentes)
-  const allItems = checklist;
-  // Apenas itens concluídos para o checklist final
   const completedItems = checklist.filter((c) => c.done);
-  // Itens pendentes
   const pendingItems = checklist.filter((c) => !c.done);
 
   return (
     <div className="p-5 md:p-8">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-[#1e3c72] to-[#2a5298] text-white py-10 px-8 text-center">
-          <h2 className="text-3xl font-bold mb-2">
-            Reunião Semanal de Segurança
-          </h2>
-          <p className="opacity-90">
-            Há 38 anos, unindo energias para ir mais longe!
-          </p>
+        {/* Header com logo */}
+        <div className="bg-gradient-to-r from-[#1e3c72] to-[#2a5298] text-white py-6 px-8">
+          <div className="flex items-center justify-between">
+            <div className="text-left">
+              <h2 className="text-3xl font-bold mb-1">
+                Reunião Semanal de Segurança
+              </h2>
+              <p className="opacity-90 text-sm md:text-base">
+                Há 38 anos, unindo energias para ir mais longe!
+              </p>
+            </div>
+            <div className="hidden md:block">
+              <Image
+                src="/Logo-Beq-branca.jpg"
+                alt="Logo Beq"
+                width={140}
+                height={40}
+                className="object-contain"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Ações da Reunião Anterior */}
@@ -576,7 +586,10 @@ export default function Home() {
                           (c) => c.text === item.text
                         );
                         if (itemIndex !== -1) {
-                          handleToggleChecklistItem(itemIndex, e.target.checked);
+                          handleToggleChecklistItem(
+                            itemIndex,
+                            e.target.checked
+                          );
                         }
                       }}
                       className="w-5 h-5 accent-emerald-500"
