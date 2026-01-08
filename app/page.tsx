@@ -58,7 +58,7 @@ export default function Home() {
       .join(":");
   };
 
-  // Load CSV file
+  // Load CSV file (reunião anterior)
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -66,34 +66,37 @@ export default function Home() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
       const actions: string[] = [];
 
-      console.log("Primeiras 5 linhas do CSV:", lines.slice(0, 5));
-
-      lines.slice(1).forEach((line, lineIndex) => {
+      lines.slice(1).forEach((line) => {
         const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-        console.log(`Linha ${lineIndex + 2}:`, cols);
-
-        const hasAction = cols.some(col => 
-          col && col.toLowerCase().trim().includes("ação")
+        const hasAction = cols.some(
+          (col) => col && col.toLowerCase().trim().includes("ação")
         );
 
         if (hasAction) {
-          const actionText = cols[1]?.replace(/"/g, "").trim() || 
-                            cols.find(col => col && col.trim() && !col.toLowerCase().includes("ação"))?.replace(/"/g, "").trim();
-          
+          const actionText =
+            cols[1]?.replace(/"/g, "").trim() ||
+            cols
+              .find(
+                (col) =>
+                  col &&
+                  col.trim() &&
+                  !col.toLowerCase().includes("ação")
+              )
+              ?.replace(/"/g, "")
+              .trim();
+
           if (actionText) {
             actions.push(actionText);
-            console.log("Ação encontrada:", actionText);
           }
         }
       });
 
-      console.log("Total de ações encontradas:", actions.length);
       setPreviousActions(actions);
     };
-    reader.readAsText(file, 'UTF-8');
+    reader.readAsText(file, "UTF-8");
   };
 
   // Analyze with AI
@@ -123,12 +126,12 @@ export default function Home() {
   // Add manual action
   const handleAddManualAction = () => {
     if (manualAction.trim()) {
-      setSuggestions(prev => [...prev, manualAction.trim()]);
+      setSuggestions((prev) => [...prev, manualAction.trim()]);
       setManualAction("");
     }
   };
 
-  // Approve action
+  // Approve action (vai para checklist final)
   const handleApprove = (index: number) => {
     const action = suggestions[index];
     const area = selectedAreas[index] || STATES[0];
@@ -151,7 +154,7 @@ export default function Home() {
     });
   };
 
-  // Toggle state checkbox (Apresentação)
+  // Toggle state checkbox (entra como Apresentação)
   const handleToggleState = (state: string, checked: boolean) => {
     if (checked) {
       setChecklist((prev) => [
@@ -177,7 +180,7 @@ export default function Home() {
     );
   };
 
-  // Download Excel/CSV - NOVA ESTRUTURA
+  // Download Excel/CSV com nova estrutura
   const handleDownload = () => {
     const markedItems = checklist.filter((c) => c.done);
     if (markedItems.length === 0) {
@@ -187,19 +190,20 @@ export default function Home() {
 
     const today = new Date();
     const dueDate = new Date(today);
-    dueDate.setDate(dueDate.getDate() + 8); // 8 dias a frente
+    dueDate.setDate(dueDate.getDate() + 8); // 8 dias à frente
 
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
-    // 👈 NOVA ESTRUTURA DE COLUNAS
-    let csv = "Entradas,\"Saídas: Decisões e ações\",Responsável,Data,Status\n";
+    // Cabeçalho novo
+    let csv =
+      'Entradas,"Saídas: Decisões e ações",Responsável,Data,Status\n';
 
     markedItems.forEach((c) => {
-      const entradas = c.type; // "Ação" ou "Apresentação"
-      const saidas = c.text; // Descrição da ação
-      const responsavel = c.area; // Estado/Responsável
-      const data = formatDate(dueDate); // 8 dias a frente
-      const status = c.done ? "Concluído" : "Pendente"; // Status baseado no done
+      const entradas = c.type;
+      const saidas = c.text;
+      const responsavel = c.area;
+      const data = formatDate(dueDate);
+      const status = c.done ? "Concluído" : "Pendente";
 
       csv += `"${entradas}","${saidas}","${responsavel}","${data}","${status}"\n`;
     });
@@ -218,8 +222,12 @@ export default function Home() {
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1e3c72] to-[#2a5298] text-white py-10 px-8 text-center">
-          <h2 className="text-3xl font-bold mb-2">Reunião Semanal de Segurança</h2>
-          <p className="opacity-90">Há 38 anos, unindo energias para ir mais longe!</p>
+          <h2 className="text-3xl font-bold mb-2">
+            Reunião Semanal de Segurança
+          </h2>
+          <p className="opacity-90">
+            Há 38 anos, unindo energias para ir mais longe!
+          </p>
         </div>
 
         {/* Ações da Reunião Anterior */}
@@ -239,20 +247,44 @@ export default function Home() {
                 Carregue um arquivo CSV para ver as ações anteriores
               </p>
             ) : (
-              previousActions.map((action, i) => (
-                <div
-                  key={i}
-                  className="bg-white p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm"
-                >
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="w-5 h-5 accent-emerald-500"
-                    />
-                    <span>{action}</span>
-                  </label>
-                </div>
-              ))
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                        #
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                        Ação da reunião anterior
+                      </th>
+                      <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {previousActions.map((action, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-600 align-top">
+                          {i + 1}
+                        </td>
+                        <td className="px-3 py-2 text-gray-800 align-top">
+                          {action}
+                        </td>
+                        <td className="px-3 py-2 text-center align-top">
+                          <select
+                            className="px-2 py-1 border-2 border-gray-200 rounded-lg text-xs focus:outline-none focus:border-emerald-500"
+                            defaultValue="Pendente"
+                          >
+                            <option value="Pendente">Pendente</option>
+                            <option value="Concluído">OK</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </section>
@@ -307,7 +339,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Transcrição */}
+        {/* Transcrição / ações atuais */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Transcrição da Reunião
@@ -320,8 +352,7 @@ export default function Home() {
                 placeholder="Cole a transcrição completa da reunião aqui..."
                 className="w-full h-44 p-4 border-2 border-gray-200 rounded-xl resize-y focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
-              
-              {/* Botões lado a lado */}
+
               <div className="flex gap-3 mt-3">
                 <button
                   onClick={handleAnalyze}
@@ -330,7 +361,7 @@ export default function Home() {
                 >
                   {isAnalyzing ? "Analisando com IA..." : "Analisar com IA"}
                 </button>
-                
+
                 <button
                   onClick={handleAddManualAction}
                   disabled={!manualAction.trim() || isAnalyzing}
@@ -340,13 +371,12 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* Input ação manual */}
               <input
                 type="text"
                 value={manualAction}
                 onChange={(e) => setManualAction(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && manualAction.trim()) {
+                  if (e.key === "Enter" && manualAction.trim()) {
                     handleAddManualAction();
                   }
                 }}
@@ -364,43 +394,82 @@ export default function Home() {
                   {analysisMessage}
                 </p>
               )}
-              {suggestions.length === 0 && !analysisMessage && (
+              {suggestions.length === 0 && !analysisMessage ? (
                 <p className="text-center py-5 text-gray-500">
                   As ações aparecerão aqui (IA + Manual)
                 </p>
-              )}
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-                {suggestions.map((suggestion, i) => (
-                  <div
-                    key={i}
-                    className="bg-white p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm hover:shadow-md transition-all"
-                  >
-                    <p className="font-medium mb-2 text-gray-800">{suggestion}</p>
-                    <select
-                      value={selectedAreas[i] || STATES[0]}
-                      onChange={(e) =>
-                        setSelectedAreas((prev) => ({
-                          ...prev,
-                          [i]: e.target.value,
-                        }))
-                      }
-                      className="w-full p-3 border-2 border-gray-200 rounded-xl mb-3 focus:outline-none focus:border-emerald-500 focus:ring-1"
-                    >
-                      {STATES.map((state) => (
-                        <option key={state} value={state}>
-                          {state}
-                        </option>
+              ) : (
+                <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-xl">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                          #
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                          Ação
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                          Responsável
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                          Status
+                        </th>
+                        <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                          Aprovar
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {suggestions.map((suggestion, i) => (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-600 align-top">
+                            {i + 1}
+                          </td>
+                          <td className="px-3 py-2 text-gray-800 align-top">
+                            {suggestion}
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <select
+                              value={selectedAreas[i] || STATES[0]}
+                              onChange={(e) =>
+                                setSelectedAreas((prev) => ({
+                                  ...prev,
+                                  [i]: e.target.value,
+                                }))
+                              }
+                              className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                            >
+                              {STATES.map((state) => (
+                                <option key={state} value={state}>
+                                  {state}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <select
+                              className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                              defaultValue="Pendente"
+                            >
+                              <option value="Pendente">Pendente</option>
+                              <option value="Concluído">OK</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2 text-center align-top">
+                            <button
+                              onClick={() => handleApprove(i)}
+                              className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-all"
+                            >
+                              Aprovar
+                            </button>
+                          </td>
+                        </tr>
                       ))}
-                    </select>
-                    <button
-                      onClick={() => handleApprove(i)}
-                      className="w-full py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all shadow-md"
-                    >
-                      ✅ Aprovar Ação
-                    </button>
-                  </div>
-                ))}
-              </div>
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -446,7 +515,7 @@ export default function Home() {
                         className="w-5 h-5 accent-emerald-500"
                       />
                       <span className="flex-1">
-                        <strong>{item.type}:</strong> {item.text} 
+                        <strong>{item.type}:</strong> {item.text}
                         <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                           {item.area}
                         </span>
