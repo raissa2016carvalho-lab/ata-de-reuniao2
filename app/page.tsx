@@ -191,10 +191,13 @@ export default function Home() {
     );
   };
 
-  // Download Excel/CSV com nova estrutura
+  // Download Excel/CSV - Apenas Pendentes + Concluídos
   const handleDownload = () => {
-    const markedItems = checklist.filter((c) => c.done);
-    if (markedItems.length === 0) {
+    const completedItems = checklist.filter((c) => c.done);
+    const pendingItems = checklist.filter((c) => !c.done);
+    const allItems = [...completedItems, ...pendingItems];
+
+    if (allItems.length === 0) {
       alert("Marque pelo menos um item antes de exportar");
       return;
     }
@@ -208,7 +211,7 @@ export default function Home() {
     let csv =
       'Entradas,"Saídas: Decisões e ações",Responsável,Data,Status\n';
 
-    markedItems.forEach((c) => {
+    allItems.forEach((c) => {
       const entradas = c.type;
       const saidas = c.text;
       const responsavel = c.area;
@@ -607,10 +610,10 @@ export default function Home() {
           )}
           <button
             onClick={handleDownload}
-            disabled={completedItems.length === 0}
+            disabled={completedItems.length === 0 && pendingItems.length === 0}
             className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            📥 Baixar Relatório ({completedItems.length} itens)
+            📥 Baixar Relatório ({completedItems.length + pendingItems.length} itens)
           </button>
         </section>
       </div>
