@@ -12,7 +12,7 @@ const STATES = [
 ];
 
 interface ChecklistItem {
-  type: string; // "Ação" ou "Apresentação"
+  type: string;
   text: string;
   area: string;
   done: boolean;
@@ -22,6 +22,7 @@ export default function Home() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedAreas, setSelectedAreas] = useState<Record<number, string>>({});
+  const [selectedStatus, setSelectedStatus] = useState<Record<number, string>>({});
   const [transcript, setTranscript] = useState("");
   const [manualAction, setManualAction] = useState("");
   const [objective, setObjective] = useState("");
@@ -131,10 +132,11 @@ export default function Home() {
     }
   };
 
-  // Approve action (vai para checklist final)
+  // Approve action - agora verifica o status
   const handleApprove = (index: number) => {
     const action = suggestions[index];
     const area = selectedAreas[index] || STATES[0];
+    const status = selectedStatus[index] || "Pendente"; // Pega o status
 
     setChecklist((prev) => [
       ...prev,
@@ -142,7 +144,7 @@ export default function Home() {
         type: "Ação",
         text: action,
         area,
-        done: true,
+        done: status === "Concluído", // Se Concluído, marca como done
       },
     ]);
 
@@ -151,6 +153,11 @@ export default function Home() {
       const newAreas = { ...prev };
       delete newAreas[index];
       return newAreas;
+    });
+    setSelectedStatus((prev) => {
+      const newStatus = { ...prev };
+      delete newStatus[index];
+      return newStatus;
     });
   };
 
@@ -215,7 +222,12 @@ export default function Home() {
     a.click();
   };
 
-  const markedItems = checklist.filter((c) => c.done);
+  // Todos os itens (concluídos e pendentes)
+  const allItems = checklist;
+  // Apenas itens concluídos para o checklist final
+  const completedItems = checklist.filter((c) => c.done);
+  // Itens pendentes
+  const pendingItems = checklist.filter((c) => !c.done);
 
   return (
     <div className="p-5 md:p-8">
@@ -426,7 +438,7 @@ export default function Home() {
                           <td className="px-3 py-2 text-gray-600 align-top">
                             {i + 1}
                           </td>
-                          <td className="px-3 py-2 text-gray-800 align-top">
+                          <td className="px-3 py-2 text-gray-800 align-top text-xs">
                             {suggestion}
                           </td>
                           <td className="px-3 py-2 align-top">
@@ -449,8 +461,14 @@ export default function Home() {
                           </td>
                           <td className="px-3 py-2 align-top">
                             <select
+                              value={selectedStatus[i] || "Pendente"}
+                              onChange={(e) =>
+                                setSelectedStatus((prev) => ({
+                                  ...prev,
+                                  [i]: e.target.value,
+                                }))
+                              }
                               className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
-                              defaultValue="Pendente"
                             >
                               <option value="Pendente">Pendente</option>
                               <option value="Concluído">OK</option>
@@ -488,50 +506,106 @@ export default function Home() {
           />
         </section>
 
-        {/* Checklist Final */}
+        {/* Ações Pendentes */}
+        {pendingItems.length > 0 && (
+          <section className="p-8 border-b border-gray-200 bg-yellow-50">
+            <h3 className="text-xl font-bold text-gray-800 mb-5">
+              ⏳ Ações Pendentes ({pendingItems.length})
+            </h3>
+            <div className="border border-yellow-300 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-yellow-100">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                      Ação
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                      Responsável
+                    </th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                      Marcar Concluído
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-yellow-200">
+                  {pendingItems.map((item, i) => (
+                    <tr key={i} className="hover:bg-yellow-100">
+                      <td className="px-3 py-2 text-gray-800">{item.text}</td>
+                      <td className="px-3 py-2 text-gray-700">
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                          {item.area}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          onClick={() => {
+                            const itemIndex = checklist.findIndex(
+                              (c) => c.text === item.text && !c.done
+                            );
+                            if (itemIndex !== -1) {
+                              handleToggleChecklistItem(itemIndex, true);
+                            }
+                          }}
+                          className="px-3 py-1 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-all"
+                        >
+                          ✅ Concluído
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* Checklist Final - Apenas Concluídos */}
         <section className="p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Checklist Final do Relatório ({markedItems.length} itens)
+            Checklist Final do Relatório ({completedItems.length} itens)
           </h3>
-          {markedItems.length === 0 ? (
+          {completedItems.length === 0 ? (
             <p className="text-center py-5 text-gray-500">
-              Nenhum item marcado
+              Nenhum item concluído
             </p>
           ) : (
             <div className="space-y-3 mb-5">
-              {checklist.map((item, i) =>
-                item.done ? (
-                  <div
-                    key={i}
-                    className="bg-gray-50 p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm opacity-70 line-through hover:opacity-90 transition-all"
-                  >
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={item.done}
-                        onChange={(e) =>
-                          handleToggleChecklistItem(i, e.target.checked)
+              {completedItems.map((item, i) => (
+                <div
+                  key={i}
+                  className="bg-gray-50 p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm hover:shadow-md transition-all"
+                >
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={(e) => {
+                        const itemIndex = checklist.findIndex(
+                          (c) => c.text === item.text
+                        );
+                        if (itemIndex !== -1) {
+                          handleToggleChecklistItem(itemIndex, e.target.checked);
                         }
-                        className="w-5 h-5 accent-emerald-500"
-                      />
-                      <span className="flex-1">
-                        <strong>{item.type}:</strong> {item.text}
-                        <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                          {item.area}
-                        </span>
+                      }}
+                      className="w-5 h-5 accent-emerald-500"
+                    />
+                    <span className="flex-1">
+                      <strong>{item.type}:</strong> {item.text}
+                      <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                        {item.area}
                       </span>
-                    </label>
-                  </div>
-                ) : null
-              )}
+                    </span>
+                  </label>
+                </div>
+              ))}
             </div>
           )}
           <button
             onClick={handleDownload}
-            disabled={markedItems.length === 0}
+            disabled={completedItems.length === 0}
             className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            📥 Baixar Relatório ({markedItems.length} itens)
+            📥 Baixar Relatório ({completedItems.length} itens)
           </button>
         </section>
       </div>
