@@ -4,12 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
-  "Ceará - Apresentação Numeros de Segurança",
-  "Bahia - Apresentação Numeros de Segurança",
-  "Piauí - Apresentação Numeros de Segurança",
-  "Rio Grande do Norte - Apresentação Numeros de Segurança",
-  "Minas Gerais - Apresentação Numeros de Segurança",
-  "São Paulo - Apresentação Numeros de Segurança",
+  "Ceará",
+  "Bahia",
+  "Rio Grande do Norte",
+  "Minas Gerais",
+  "São Paulo",
 ];
 
 interface ChecklistItem {
@@ -24,6 +23,7 @@ export default function Home() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedAreas, setSelectedAreas] = useState<Record<number, string>>({});
   const [transcript, setTranscript] = useState("");
+  const [manualAction, setManualAction] = useState(""); // 👈 NOVO
   const [objective, setObjective] = useState("");
   const [previousActions, setPreviousActions] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -58,48 +58,43 @@ export default function Home() {
       .join(":");
   };
 
-  // Load CSV file
-  // Substitua a função handleFileLoad por esta versão corrigida:
-const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  // Load CSV file - VERSÃO CORRIGIDA
+  const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const text = event.target?.result as string;
-    const lines = text.split(/\r?\n/).filter(line => line.trim()); // Remove linhas vazias
-    const actions: string[] = [];
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      const actions: string[] = [];
 
-    // Debug: mostra as primeiras linhas pra você ver a estrutura
-    console.log("Primeiras 5 linhas do CSV:", lines.slice(0, 5));
+      console.log("Primeiras 5 linhas do CSV:", lines.slice(0, 5));
 
-    lines.slice(1).forEach((line, lineIndex) => { // Pula cabeçalho
-      const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/); // Split CSV mais inteligente
-      console.log(`Linha ${lineIndex + 2}:`, cols); // Debug cada linha
+      lines.slice(1).forEach((line, lineIndex) => {
+        const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+        console.log(`Linha ${lineIndex + 2}:`, cols);
 
-      // Verifica se QUALQUER coluna contém "ação" (case insensitive)
-      const hasAction = cols.some(col => 
-        col && col.toLowerCase().trim().includes("ação")
-      );
+        const hasAction = cols.some(col => 
+          col && col.toLowerCase().trim().includes("ação")
+        );
 
-      if (hasAction) {
-        // Pega o texto da ação (segunda coluna ou próxima não vazia)
-        const actionText = cols[1]?.replace(/"/g, "").trim() || 
-                          cols.find(col => col && col.trim() && !col.toLowerCase().includes("ação"))?.replace(/"/g, "").trim();
-        
-        if (actionText) {
-          actions.push(actionText);
-          console.log("Ação encontrada:", actionText); // Debug
+        if (hasAction) {
+          const actionText = cols[1]?.replace(/"/g, "").trim() || 
+                            cols.find(col => col && col.trim() && !col.toLowerCase().includes("ação"))?.replace(/"/g, "").trim();
+          
+          if (actionText) {
+            actions.push(actionText);
+            console.log("Ação encontrada:", actionText);
+          }
         }
-      }
-    });
+      });
 
-    console.log("Total de ações encontradas:", actions.length);
-    setPreviousActions(actions);
+      console.log("Total de ações encontradas:", actions.length);
+      setPreviousActions(actions);
+    };
+    reader.readAsText(file, 'UTF-8');
   };
-  reader.readAsText(file, 'UTF-8'); // Força UTF-8
-};
-
 
   // Analyze with AI
   const handleAnalyze = async () => {
@@ -125,6 +120,14 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     setIsAnalyzing(false);
   };
 
+  // 👈 NOVA FUNÇÃO AÇÃO MANUAL
+  const handleAddManualAction = () => {
+    if (manualAction.trim()) {
+      setSuggestions(prev => [...prev, manualAction.trim()]);
+      setManualAction("");
+    }
+  };
+
   // Approve action
   const handleApprove = (index: number) => {
     const action = suggestions[index];
@@ -141,6 +144,12 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     ]);
 
     setSuggestions((prev) => prev.filter((_, i) => i !== index));
+    // Limpa selectedAreas do item removido
+    setSelectedAreas((prev) => {
+      const newAreas = { ...prev };
+      delete newAreas[index];
+      return newAreas;
+    });
   };
 
   // Toggle state checkbox
@@ -297,7 +306,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         </section>
 
-        {/* Transcrição */}
+        {/* 👈 SEÇÃO TRANSCRIÇÃO ATUALIZADA COM AÇÃO MANUAL */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Transcrição da Reunião
@@ -310,35 +319,62 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                 placeholder="Cole a transcrição completa da reunião aqui..."
                 className="w-full h-44 p-4 border-2 border-gray-200 rounded-xl resize-y focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
-              <button
-                onClick={handleAnalyze}
-                disabled={isAnalyzing}
-                className="w-full mt-3 py-4 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
-              >
-                {isAnalyzing ? "Analisando com IA..." : "Analisar com IA"}
-              </button>
+              
+              {/* 👈 BOTÕES LADO A LADO */}
+              <div className="flex gap-3 mt-3">
+                <button
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing}
+                  className="flex-1 py-4 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
+                >
+                  {isAnalyzing ? "Analisando com IA..." : "Analisar com IA"}
+                </button>
+                
+                <button
+                  onClick={handleAddManualAction}
+                  disabled={!manualAction.trim() || isAnalyzing}
+                  className="px-6 py-4 bg-purple-600 text-white font-semibold rounded-xl hover:bg-purple-700 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
+                >
+                  ➕ Manual
+                </button>
+              </div>
+
+              {/* 👈 INPUT AÇÃO MANUAL */}
+              <input
+                type="text"
+                value={manualAction}
+                onChange={(e) => setManualAction(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && manualAction.trim()) {
+                    handleAddManualAction();
+                  }
+                }}
+                placeholder="Digite ação manual + Enter ou botão ➕"
+                className="w-full mt-3 p-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+              />
             </div>
+
             <div>
               <h4 className="text-lg font-semibold text-gray-800 mb-4">
-                Ações identificadas
+                Ações identificadas ({suggestions.length})
               </h4>
               {analysisMessage && (
-                <p className="text-center py-5 text-gray-500">
+                <p className="text-center py-5 text-gray-500 mb-4">
                   {analysisMessage}
                 </p>
               )}
               {suggestions.length === 0 && !analysisMessage && (
                 <p className="text-center py-5 text-gray-500">
-                  As ações identificadas aparecerão aqui
+                  As ações aparecerão aqui (IA + Manual)
                 </p>
               )}
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
                 {suggestions.map((suggestion, i) => (
                   <div
                     key={i}
-                    className="bg-white p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm"
+                    className="bg-white p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm hover:shadow-md transition-all"
                   >
-                    <p className="font-medium mb-3">{suggestion}</p>
+                    <p className="font-medium mb-2 text-gray-800">{suggestion}</p>
                     <select
                       value={selectedAreas[i] || STATES[0]}
                       onChange={(e) =>
@@ -347,7 +383,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                           [i]: e.target.value,
                         }))
                       }
-                      className="w-full p-3 border-2 border-gray-200 rounded-xl mb-3 focus:outline-none focus:border-emerald-500"
+                      className="w-full p-3 border-2 border-gray-200 rounded-xl mb-3 focus:outline-none focus:border-emerald-500 focus:ring-1"
                     >
                       {STATES.map((state) => (
                         <option key={state} value={state}>
@@ -357,9 +393,9 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                     </select>
                     <button
                       onClick={() => handleApprove(i)}
-                      className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all"
+                      className="w-full py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all shadow-md"
                     >
-                      Aprovar
+                      ✅ Aprovar Ação
                     </button>
                   </div>
                 ))}
@@ -385,7 +421,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
         {/* Checklist Final */}
         <section className="p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Checklist Final da Ata
+            Checklist Final da Ata ({markedItems.length} itens)
           </h3>
           {markedItems.length === 0 ? (
             <p className="text-center py-5 text-gray-500">
@@ -397,7 +433,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                 item.done ? (
                   <div
                     key={i}
-                    className="bg-gray-50 p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm opacity-70 line-through"
+                    className="bg-gray-50 p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm opacity-70 line-through hover:opacity-90 transition-all"
                   >
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input
@@ -408,8 +444,11 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                         }
                         className="w-5 h-5 accent-emerald-500"
                       />
-                      <span>
-                        <strong>{item.type}:</strong> {item.text} — {item.area}
+                      <span className="flex-1">
+                        <strong>{item.type}:</strong> {item.text} 
+                        <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                          {item.area}
+                        </span>
                       </span>
                     </label>
                   </div>
@@ -419,9 +458,10 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
           )}
           <button
             onClick={handleDownload}
-            className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all"
+            disabled={markedItems.length === 0}
+            className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            Baixar ATA em Excel
+            📥 Baixar ATA ({markedItems.length} itens)
           </button>
         </section>
       </div>
