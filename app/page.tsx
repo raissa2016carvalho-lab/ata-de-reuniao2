@@ -4,11 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
-  "Ceará - Apresentar Numeros de Segurança",
-  "Bahia",
-  "Rio Grande do Norte",
-  "Minas Gerais",
-  "São Paulo",
+  "Ceará - Apresentação Numeros de Segurança",
+  "Bahia - Apresentação Numeros de Segurança",
+  "Piauí - Apresentação Numeros de Segurança",
+  "Rio Grande do Norte - Apresentação Numeros de Segurança",
+  "Minas Gerais - Apresentação Numeros de Segurança",
+  "São Paulo - Apresentação Numeros de Segurança",
 ];
 
 interface ChecklistItem {
