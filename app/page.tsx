@@ -18,6 +18,11 @@ interface ChecklistItem {
   done: boolean;
 }
 
+interface PreviousActionItem {
+  action: string;
+  responsavel: string;
+}
+
 export default function Home() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -26,7 +31,7 @@ export default function Home() {
   const [transcript, setTranscript] = useState("");
   const [manualAction, setManualAction] = useState("");
   const [objective, setObjective] = useState("");
-  const [previousActions, setPreviousActions] = useState<string[]>([]);
+  const [previousActions, setPreviousActions] = useState<PreviousActionItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
 
@@ -68,29 +73,26 @@ export default function Home() {
     reader.onload = (event) => {
       const text = event.target?.result as string;
       const lines = text.split(/\r?\n/).filter((line) => line.trim());
-      const actions: string[] = [];
+      const actions: PreviousActionItem[] = [];
 
       lines.slice(1).forEach((line) => {
         const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-        const hasAction = cols.some(
+        
+        // Procura por coluna com "ação"
+        const actionIndex = cols.findIndex(
           (col) => col && col.toLowerCase().trim().includes("ação")
         );
 
-        if (hasAction) {
-          const actionText =
-            cols[1]?.replace(/"/g, "").trim() ||
-            cols
-              .find(
-                (col) =>
-                  col &&
-                  col.trim() &&
-                  !col.toLowerCase().includes("ação")
-              )
-              ?.replace(/"/g, "")
-              .trim();
+        if (actionIndex !== -1) {
+          const actionText = cols[actionIndex + 1]?.replace(/"/g, "").trim();
+          // Procura por responsável (área/estado) - geralmente na 3ª coluna
+          const responsavel = cols[2]?.replace(/"/g, "").trim() || "Não definido";
 
           if (actionText) {
-            actions.push(actionText);
+            actions.push({
+              action: actionText,
+              responsavel: responsavel,
+            });
           }
         }
       });
@@ -136,7 +138,7 @@ export default function Home() {
   const handleApprove = (index: number) => {
     const action = suggestions[index];
     const area = selectedAreas[index] || STATES[0];
-    const status = selectedStatus[index] || "Pendente"; // Pega o status
+    const status = selectedStatus[index] || "Concluído"; // Default Concluído
 
     setChecklist((prev) => [
       ...prev,
@@ -144,7 +146,7 @@ export default function Home() {
         type: "Ação",
         text: action,
         area,
-        done: status === "Concluído", // Se Concluído, marca como done
+        done: status === "Concluído",
       },
     ]);
 
@@ -269,19 +271,27 @@ export default function Home() {
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">
                         Ação da reunião anterior
                       </th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                        Responsável
+                      </th>
                       <th className="px-3 py-2 text-center font-semibold text-gray-700">
                         Status
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {previousActions.map((action, i) => (
+                    {previousActions.map((item, i) => (
                       <tr key={i} className="hover:bg-gray-50">
                         <td className="px-3 py-2 text-gray-600 align-top">
                           {i + 1}
                         </td>
                         <td className="px-3 py-2 text-gray-800 align-top">
-                          {action}
+                          {item.action}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700 align-top">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                            {item.responsavel}
+                          </span>
                         </td>
                         <td className="px-3 py-2 text-center align-top">
                           <select
@@ -424,9 +434,6 @@ export default function Home() {
                         <th className="px-3 py-2 text-left font-semibold text-gray-700">
                           Responsável
                         </th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                          Status
-                        </th>
                         <th className="px-3 py-2 text-center font-semibold text-gray-700">
                           Aprovar
                         </th>
@@ -457,21 +464,6 @@ export default function Home() {
                                   {state}
                                 </option>
                               ))}
-                            </select>
-                          </td>
-                          <td className="px-3 py-2 align-top">
-                            <select
-                              value={selectedStatus[i] || "Pendente"}
-                              onChange={(e) =>
-                                setSelectedStatus((prev) => ({
-                                  ...prev,
-                                  [i]: e.target.value,
-                                }))
-                              }
-                              className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
-                            >
-                              <option value="Pendente">Pendente</option>
-                              <option value="Concluído">OK</option>
                             </select>
                           </td>
                           <td className="px-3 py-2 text-center align-top">
