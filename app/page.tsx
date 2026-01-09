@@ -19,6 +19,7 @@ interface ChecklistItem {
   text: string;
   area: string;
   done: boolean;
+  time?: string; // Tempo final salvo
 }
 
 interface PreviousActionItem {
@@ -142,6 +143,27 @@ export default function Home() {
     });
   };
 
+  // Botão PARAR para estado específico
+  const handleStopTimer = (state: string) => {
+    const itemKey = state;
+    if (individualTimers[itemKey]) {
+      clearInterval(individualTimers[itemKey]);
+      const newTimers = { ...individualTimers };
+      delete newTimers[itemKey];
+      setIndividualTimers(newTimers);
+      
+      // Salva tempo final no checklist
+      const finalTime = formatItemTime(state);
+      setChecklist(prev => 
+        prev.map(item => 
+          item.type === "Apresentação" && item.text === state
+            ? { ...item, time: finalTime }
+            : item
+        )
+      );
+    }
+  };
+
   // Toggle state checkbox com timer automático
   const handleToggleState = (state: string, checked: boolean) => {
     const itemKey = state;
@@ -158,7 +180,7 @@ export default function Home() {
       setIndividualTimers(prev => ({ ...prev, [itemKey]: timerId }));
       
       setChecklist((prev) => [
-        ...prev,
+        ...prev.filter(c => !(c.type === "Apresentação" && c.text === state)), // Remove se existir
         {
           type: "Apresentação",
           text: state,
@@ -167,19 +189,13 @@ export default function Home() {
         },
       ]);
     } else {
-      // Para e limpa timer
-      if (individualTimers[itemKey]) {
-        clearInterval(individualTimers[itemKey]);
-        const newTimers = { ...individualTimers };
-        delete newTimers[itemKey];
-        setIndividualTimers(newTimers);
-      }
+      handleStopTimer(state); // Para timer ao desmarcar
       
       setChecklist((prev) =>
         prev.filter((c) => !(c.type === "Apresentação" && c.text === state))
       );
       
-      // Limpa tempo deste item
+      // Limpa tempo em execução
       setPresentationTimes(prev => {
         const newTimes = { ...prev };
         delete newTimes[itemKey];
@@ -230,11 +246,8 @@ export default function Home() {
       const data = formatDate(dueDate);
       const status = c.done ? "Concluído" : "Pendente";
       
-      // Pega tempo para apresentações
-      let tempo = "";
-      if (c.type === "Apresentação") {
-        tempo = formatItemTime(c.text);
-      }
+      // Usa tempo salvo ou tempo em execução
+      let tempo = c.time || (c.type === "Apresentação" ? formatItemTime(c.text) : "");
 
       csv += `"${entradas}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
     });
@@ -342,7 +355,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Apresentação dos Números - COM TIMER AUTOMÁTICO */}
+        {/* Apresentação dos Números - COM TIMER AUTOMÁTICO + BOTÃO PARAR */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Apresentação dos Números de Segurança (Meta de Inspeção, Eventos Ocorridos, Taxa de Frequencia e Gravidade, Tipologia, Inspeões Cruzadas)
@@ -350,16 +363,12 @@ export default function Home() {
           <div className="space-y-3">
             {STATES.map((state) => {
               const isChecked = checklist.some(c => c.type === "Apresentação" && c.text === state);
+              const currentTime = formatItemTime(state);
+              const hasSavedTime = checklist.some(c => c.type === "Apresentação" && c.text === state && c.time);
+              
               return (
-                <label
-                  key={state}
-                  className={`flex items-center justify-between gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                    isChecked 
-                      ? 'border-emerald-500 bg-emerald-50 shadow-md' 
-                      : 'border-gray-200 hover:border-emerald-500 hover:bg-emerald-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
+                <div key={state} className="flex gap-3 items-start p-4 border-2 rounded-xl transition-all">
+                  <label className="flex-1 flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all flex-grow">
                     <input
                       type="checkbox"
                       checked={isChecked}
@@ -367,13 +376,26 @@ export default function Home() {
                       className="w-5 h-5 accent-emerald-500"
                     />
                     <span className="font-semibold">{state}</span>
-                  </div>
-                  {isChecked && (
-                    <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-sm font-mono min-w-[60px] text-right">
-                      {formatItemTime(state)}
+                  </label>
+                  
+                  <div className="flex flex-col gap-1 flex-shrink-0">
+                    <span className={`px-3 py-1 rounded-full text-sm font-mono text-right min-w-[70px] ${
+                      isChecked 
+                        ? 'bg-emerald-100 text-emerald-800 font-bold shadow-md' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {hasSavedTime ? checklist.find(c => c.type === "Apresentação" && c.text === state)?.time || currentTime : currentTime}
                     </span>
-                  )}
-                </label>
+                    {isChecked && (
+                      <button
+                        onClick={() => handleStopTimer(state)}
+                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow-md transition-all text-center whitespace-nowrap"
+                      >
+                        ⏹️ Parar
+                      </button>
+                    )}
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -533,6 +555,9 @@ export default function Home() {
                       Responsável
                     </th>
                     <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                      Tempo
+                    </th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-700">
                       Marcar Concluído
                     </th>
                   </tr>
@@ -545,6 +570,9 @@ export default function Home() {
                         <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                           {item.area}
                         </span>
+                      </td>
+                      <td className="px-3 py-2 text-center text-sm font-mono">
+                        {item.time || '-'}
                       </td>
                       <td className="px-3 py-2 text-center">
                         <button
@@ -607,9 +635,9 @@ export default function Home() {
                       <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                         {item.area}
                       </span>
-                      {item.type === "Apresentação" && (
-                        <span className="ml-2 bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full text-xs font-mono">
-                          {formatItemTime(item.text)}
+                      {(item.time || (item.type === "Apresentação" && presentationTimes[item.text])) && (
+                        <span className="ml-2 bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-mono font-bold shadow-sm">
+                          {item.time || formatItemTime(item.text)}
                         </span>
                       )}
                     </span>
