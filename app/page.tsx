@@ -5,7 +5,7 @@ import Image from "next/image";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
-  "Ceará",
+  "Ceará - KPI's",
   "Bahia",
   "Rio Grande do Norte",
   "Minas Gerais",
