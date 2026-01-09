@@ -43,7 +43,7 @@ export default function Home() {
   const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
   const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
-  // Load CSV file (reunião anterior)
+   // Load CSV file (reunião anterior)
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -57,16 +57,13 @@ export default function Home() {
       lines.slice(1).forEach((line) => {
         const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
-        const actionIndex = cols.findIndex(
-          (col) => col && col.toLowerCase().trim().includes("ação")
-        );
+        // Pega o primeiro valor (coluna "Entradas")
+        const entrada = cols[0]?.replace(/"/g, "").trim().toLowerCase() || "";
 
-        if (actionIndex !== -1) {
-          const actionText = cols[actionIndex + 1]
-            ?.replace(/"/g, "")
-            .trim();
-          const responsavel =
-            cols[2]?.replace(/"/g, "").trim() || "Não definido";
+        // Filtra apenas se contém "ação"
+        if (entrada.includes("ação")) {
+          const actionText = cols[1]?.replace(/"/g, "").trim();
+          const responsavel = cols[2]?.replace(/"/g, "").trim() || "Não definido";
 
           if (actionText) {
             actions.push({
@@ -76,6 +73,11 @@ export default function Home() {
           }
         }
       });
+
+      setPreviousActions(actions);
+    };
+    reader.readAsText(file, "UTF-8");
+  };
 
       setPreviousActions(actions);
     };
