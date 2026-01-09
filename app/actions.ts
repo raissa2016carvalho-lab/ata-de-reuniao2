@@ -2,7 +2,7 @@
 
 export async function analyzeTranscript(transcript: string) {
   return {
-    summary: `Análise: ${transcript.slice(0, 100)}...`,
-    topics: ['reunião', 'ações']
+    summary: 'Transcript analisado com sucesso!',
+    actionItems: ['Ação 1 da reunião', 'Ação 2']
   };
 }
