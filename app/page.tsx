@@ -2,11 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import VoiceRecorder from "./VoiceRecorder";
-import { analyzeTranscript } from "../actions";  // ../ sobe um nível para app/actions.ts
-
-
-
+import { analyzeTranscript } from "./actions";
 
 const STATES = [
   "Ceará",
@@ -109,38 +105,28 @@ export default function Home() {
   };
 
   // Analyze with AI
- const handleAnalyze = async () => {
-  if (!transcript.trim()) {
-    alert("Cole a transcrição primeiro");
-    return;
-  }
+  const handleAnalyze = async () => {
+    if (!transcript.trim()) {
+      alert("Cole a transcrição primeiro");
+      return;
+    }
 
-  setIsAnalyzing(true);
-  setAnalysisMessage("IA está analisando a transcrição...");
+    setIsAnalyzing(true);
+    setAnalysisMessage("IA está analisando a transcrição...");
 
-  try {
-    const res = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript }),
-    });
-
-    const result = await res.json();
+    const result = await analyzeTranscript(transcript);
 
     if (result.error) {
       setAnalysisMessage(`Erro: ${result.error}`);
-    } else if (!result.actions || result.actions.length === 0) {
-      setAnalysisMessage("Nenhuma ação identificada");
+    } else if (result.actions.length === 0) {
+      setAnalysisMessage("Nenhuma ação identificada na transcrição");
     } else {
       setSuggestions(result.actions);
       setAnalysisMessage("");
     }
-  } catch (err) {
-    setAnalysisMessage("Erro ao comunicar com a IA");
-  }
 
-  setIsAnalyzing(false);
-};
+    setIsAnalyzing(false);
+  };
 
   // Add manual action
   const handleAddManualAction = () => {
