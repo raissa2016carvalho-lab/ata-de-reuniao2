@@ -43,7 +43,7 @@ export default function Home() {
   const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
   const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
- // Load CSV file (reunião anterior) - SOMENTE AÇÕES
+// Load CSV file (reunião anterior) - SOMENTE AÇÕES
 const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
   if (!file) return;
@@ -63,9 +63,12 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
         .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
         .map(c => c.replace(/"/g, "").trim());
 
-      const entrada = cols[0];      // Coluna "Entradas"
-      const actionText = cols[1];   // Texto da ação
-      const responsavel = cols[2] || "Não definido";
+      const entrada = cols[0];           // Coluna "Entradas"
+      const actionText = cols[1];        // Coluna "Saídas: Decisões e ações"
+      const responsavel = cols[2] || "Não definido"; // Coluna "Responsável"
+      // cols[3] = Data (não usamos aqui)
+      // cols[4] = Status (não usamos aqui)
+      // cols[5] = Tempo (não usamos aqui)
 
       // ✅ REGRA ÚNICA E CORRETA
       if (entrada === "Ação" && actionText) {
@@ -81,8 +84,6 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
 
   reader.readAsText(file, "UTF-8");
 };
-
-
   // Analyze with AI
   const handleAnalyze = async () => {
     if (!transcript.trim()) {
