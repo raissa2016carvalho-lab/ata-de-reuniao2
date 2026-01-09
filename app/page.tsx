@@ -43,46 +43,44 @@ export default function Home() {
   const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
   const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
-   // Load CSV file (reunião anterior)
-  const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Load CSV file (reunião anterior) - SOMENTE AÇÕES
+const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split(/\r?\n/).filter((line) => line.trim());
-      const actions: PreviousActionItem[] = [];
+  const reader = new FileReader();
 
-      lines.slice(1).forEach((line) => {
-        const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+  reader.onload = (event) => {
+    const text = event.target?.result as string;
+    const lines = text.split(/\r?\n/).filter(line => line.trim());
 
-        // Pega o primeiro valor (coluna "Entradas")
-        const entrada = cols[0]?.replace(/"/g, "").trim().toLowerCase() || "";
+    if (lines.length < 2) return;
 
-        // Filtra apenas se contém "ação"
-        if (entrada.includes("ação")) {
-          const actionText = cols[1]?.replace(/"/g, "").trim();
-          const responsavel = cols[2]?.replace(/"/g, "").trim() || "Não definido";
+    const actions: PreviousActionItem[] = [];
 
-          if (actionText) {
-            actions.push({
-              action: actionText,
-              responsavel,
-            });
-          }
-        }
-      });
+    lines.slice(1).forEach((line) => {
+      const cols = line
+        .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+        .map(c => c.replace(/"/g, "").trim());
 
-      setPreviousActions(actions);
-    };
-    reader.readAsText(file, "UTF-8");
+      const entrada = cols[0];      // Coluna "Entradas"
+      const actionText = cols[1];   // Texto da ação
+      const responsavel = cols[2] || "Não definido";
+
+      // ✅ REGRA ÚNICA E CORRETA
+      if (entrada === "Ação" && actionText) {
+        actions.push({
+          action: actionText,
+          responsavel,
+        });
+      }
+    });
+
+    setPreviousActions(actions);
   };
 
-      setPreviousActions(actions);
-    };
-    reader.readAsText(file, "UTF-8");
-  };
+  reader.readAsText(file, "UTF-8");
+};
 
   // Analyze with AI
   const handleAnalyze = async () => {
