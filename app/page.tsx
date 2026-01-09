@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { analyzeTranscript } from "./actions";
+import VoiceRecorder from "./VoiceRecorder";
 
 const STATES = [
   "Ceará",
