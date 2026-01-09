@@ -19,6 +19,7 @@ interface ChecklistItem {
   text: string;
   area: string;
   done: boolean;
+  time?: string; // Tempo final salvo
 }
 
 interface PreviousActionItem {
@@ -38,34 +39,9 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
 
-  // Timer state
-  const [seconds, setSeconds] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Timer functions
-  useEffect(() => {
-    if (isRunning) {
-      timerRef.current = setInterval(() => {
-        setSeconds((s) => s + 1);
-      }, 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRunning]);
-
-  const formatTime = (totalSeconds: number) => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    return [hours, mins, secs]
-      .map((v) => String(v).padStart(2, "0"))
-      .join(":");
-  };
+  // Timers individuais para apresentações por estado
+  const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
+  const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
   // Load CSV file (reunião anterior)
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,11 +143,44 @@ export default function Home() {
     });
   };
 
-  // Toggle state checkbox (entra como Apresentação)
+  // Botão PARAR para estado específico
+  const handleStopTimer = (state: string) => {
+    const itemKey = state;
+    if (individualTimers[itemKey]) {
+      clearInterval(individualTimers[itemKey]);
+      const newTimers = { ...individualTimers };
+      delete newTimers[itemKey];
+      setIndividualTimers(newTimers);
+      
+      // Salva tempo final no checklist
+      const finalTime = formatItemTime(state);
+      setChecklist(prev => 
+        prev.map(item => 
+          item.type === "Apresentação" && item.text === state
+            ? { ...item, time: finalTime }
+            : item
+        )
+      );
+    }
+  };
+
+  // Toggle state checkbox com timer automático
   const handleToggleState = (state: string, checked: boolean) => {
+    const itemKey = state;
+    
     if (checked) {
+      // Inicia timer individual para este estado
+      const timerId = setInterval(() => {
+        setPresentationTimes(prev => ({
+          ...prev,
+          [itemKey]: (prev[itemKey] || 0) + 1
+        }));
+      }, 1000);
+      
+      setIndividualTimers(prev => ({ ...prev, [itemKey]: timerId }));
+      
       setChecklist((prev) => [
-        ...prev,
+        ...prev.filter(c => !(c.type === "Apresentação" && c.text === state)), // Remove se existir
         {
           type: "Apresentação",
           text: state,
@@ -180,10 +189,27 @@ export default function Home() {
         },
       ]);
     } else {
+      handleStopTimer(state); // Para timer ao desmarcar
+      
       setChecklist((prev) =>
         prev.filter((c) => !(c.type === "Apresentação" && c.text === state))
       );
+      
+      // Limpa tempo em execução
+      setPresentationTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[itemKey];
+        return newTimes;
+      });
     }
+  };
+
+  // Formatar tempo individual
+  const formatItemTime = (state: string) => {
+    const totalSeconds = presentationTimes[state] || 0;
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
   // Toggle checklist item
@@ -193,14 +219,16 @@ export default function Home() {
     );
   };
 
-  // Download Excel/CSV - Apenas Pendentes + Concluídos
+  // Download Excel/CSV - APENAS AÇÕES
   const handleDownload = () => {
-    const completedItems = checklist.filter((c) => c.done);
-    const pendingItems = checklist.filter((c) => !c.done);
-    const allItems = [...completedItems, ...pendingItems];
+    // Filtra APENAS itens do tipo "Ação"
+    const actionItems = checklist.filter((c) => c.type === "Ação");
+    const completedActionItems = actionItems.filter((c) => c.done);
+    const pendingActionItems = actionItems.filter((c) => !c.done);
+    const allActionItems = [...completedActionItems, ...pendingActionItems];
 
-    if (allItems.length === 0) {
-      alert("Marque pelo menos um item antes de exportar");
+    if (allActionItems.length === 0) {
+      alert("Marque pelo menos uma ação antes de exportar");
       return;
     }
 
@@ -210,17 +238,15 @@ export default function Home() {
 
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
-    let csv =
-      'Entradas,"Saídas: Decisões e ações",Responsável,Data,Status\n';
+    let csv = '"Saídas: Decisões e ações",Responsável,Data,Status\n';
 
-    allItems.forEach((c) => {
-      const entradas = c.type;
+    allActionItems.forEach((c) => {
       const saidas = c.text;
       const responsavel = c.area;
       const data = formatDate(dueDate);
       const status = c.done ? "Concluído" : "Pendente";
 
-      csv += `"${entradas}","${saidas}","${responsavel}","${data}","${status}"\n`;
+      csv += `"${saidas}","${responsavel}","${data}","${status}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -326,53 +352,49 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Apresentação dos Números */}
+        {/* Apresentação dos Números - COM TIMER AUTOMÁTICO + BOTÃO PARAR */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Apresentação dos Números de Segurança - - (Meta de Inspeção, Eventos Ocorridos, Taxa de Frequencia e Gravidade, Tipologia, Inspeões Cruzadas)
+            Apresentação dos Números de Segurança (Meta de Inspeção, Eventos Ocorridos, Taxa de Frequencia e Gravidade, Tipologia, Inspeões Cruzadas)
           </h3>
           <div className="space-y-3">
-            {STATES.map((state) => (
-              <label
-                key={state}
-                className="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition-all"
-              >
-                <input
-                  type="checkbox"
-                  onChange={(e) => handleToggleState(state, e.target.checked)}
-                  className="w-5 h-5 accent-emerald-500"
-                />
-                <span className="font-semibold">{state}</span>
-              </label>
-            ))}
-          </div>
-
-          {/* Timer */}
-          <div className="text-5xl font-extrabold text-center text-[#1e3c72] my-6 tracking-wider font-mono">
-            {formatTime(seconds)}
-          </div>
-          <div className="flex gap-3 flex-wrap">
-            <button
-              onClick={() => setIsRunning(true)}
-              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all"
-            >
-              Iniciar
-            </button>
-            <button
-              onClick={() => setIsRunning(false)}
-              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all"
-            >
-              Pausar
-            </button>
-            <button
-              onClick={() => {
-                setIsRunning(false);
-                setSeconds(0);
-              }}
-              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all"
-            >
-              Resetar
-            </button>
+            {STATES.map((state) => {
+              const isChecked = checklist.some(c => c.type === "Apresentação" && c.text === state);
+              const currentTime = formatItemTime(state);
+              const hasSavedTime = checklist.some(c => c.type === "Apresentação" && c.text === state && c.time);
+              
+              return (
+                <div key={state} className="flex gap-3 items-start p-4 border-2 rounded-xl transition-all">
+                  <label className="flex-1 flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all flex-grow">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={(e) => handleToggleState(state, e.target.checked)}
+                      className="w-5 h-5 accent-emerald-500"
+                    />
+                    <span className="font-semibold">{state}</span>
+                  </label>
+                  
+                  <div className="flex flex-col gap-1 flex-shrink-0">
+                    <span className={`px-3 py-1 rounded-full text-sm font-mono text-right min-w-[70px] ${
+                      isChecked 
+                        ? 'bg-emerald-100 text-emerald-800 font-bold shadow-md' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {hasSavedTime ? checklist.find(c => c.type === "Apresentação" && c.text === state)?.time || currentTime : currentTime}
+                    </span>
+                    {isChecked && (
+                      <button
+                        onClick={() => handleStopTimer(state)}
+                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow-md transition-all text-center whitespace-nowrap"
+                      >
+                        ⏹️ Parar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -566,18 +588,20 @@ export default function Home() {
           </section>
         )}
 
-        {/* Checklist Final - Apenas Concluídos */}
+        {/* Checklist Final - Apenas Ações Concluídas */}
         <section className="p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Checklist Final do Relatório ({completedItems.length} itens)
+            Checklist Final do Relatório ({checklist.filter(c => c.type === "Ação" && c.done).length} ações)
           </h3>
-          {completedItems.length === 0 ? (
+          {checklist.filter(c => c.type === "Ação" && c.done).length === 0 ? (
             <p className="text-center py-5 text-gray-500">
-              Nenhum item concluído
+              Nenhuma ação concluída
             </p>
           ) : (
             <div className="space-y-3 mb-5">
-              {completedItems.map((item, i) => (
+              {checklist
+                .filter(c => c.type === "Ação" && c.done)
+                .map((item, i) => (
                 <div
                   key={i}
                   className="bg-gray-50 p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm hover:shadow-md transition-all"
@@ -600,7 +624,7 @@ export default function Home() {
                       className="w-5 h-5 accent-emerald-500"
                     />
                     <span className="flex-1">
-                      <strong>{item.type}:</strong> {item.text}
+                      <strong>Ação:</strong> {item.text}
                       <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                         {item.area}
                       </span>
@@ -612,10 +636,10 @@ export default function Home() {
           )}
           <button
             onClick={handleDownload}
-            disabled={completedItems.length === 0 && pendingItems.length === 0}
+            disabled={checklist.filter(c => c.type === "Ação").length === 0}
             className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            📥 Baixar Relatório ({completedItems.length + pendingItems.length} itens)
+            📥 Baixar Relatório ({checklist.filter(c => c.type === "Ação").length} ações)
           </button>
         </section>
       </div>
