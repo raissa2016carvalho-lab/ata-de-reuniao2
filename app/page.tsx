@@ -43,29 +43,48 @@ export default function Home() {
   const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
   const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
- // Load CSV file (reunião anterior) - SOMENTE AÇÕES
-const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+// Download Excel/CSV - FORMATO PADRÃO EXATO
+const handleDownload = () => {
+  // ✅ Filtra TODAS as ações (pendentes + concluídas)
+  const actionItems = checklist.filter((c) => c.type === "Ação");
+  
+  if (actionItems.length === 0) {
+    alert("Adicione pelo menos uma ação antes de exportar");
+    return;
+  }
 
-  const reader = new FileReader();
+  const today = new Date();
+  const dueDate = new Date(today);
+  dueDate.setDate(dueDate.getDate() + 8);
 
-  reader.onload = (event) => {
-    const text = event.target?.result as string;
-    const lines = text.split(/\r?\n/).filter(line => line.trim());
+  const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
-    if (lines.length < 2) return;
+  // ✅ CABEÇALHO EXATO DO PADRÃO
+  let csv = '"Entradas","Saídas: Decisões e ações","Responsável","Data","Status","Tempo"\n';
 
-    const actions: PreviousActionItem[] = [];
+  actionItems.forEach((c) => {
+    const entradas = "Ação"; // Coluna padrão
+    const saidas = c.text.replace(/"/g, '""'); // Escapa aspas
+    const responsavel = c.area.replace(/"/g, '""');
+    const data = formatDate(dueDate);
+    const status = c.done ? "Concluído" : "Pendente";
+    const tempo = c.time || ""; // Tempo da apresentação se houver
 
-    lines.slice(1).forEach((line) => {
-      const cols = line
-        .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
-        .map(c => c.replace(/"/g, "").trim());
+    // ✅ LINHA NO FORMATO EXATO
+    csv += `"${entradas}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
+  });
 
-      const entrada = cols[0];      // Coluna "Entradas"
-      const actionText = cols[1];   // Texto da ação
-      const responsavel = cols[2] || "Não definido";
+  // ✅ GERA E BAIXA O ARQUIVO
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
 
       // ✅ REGRA ÚNICA E CORRETA
       if (entrada === "Ação" && actionText) {
