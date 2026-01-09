@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import VoiceRecorder from "./VoiceRecorder";
-import { analyzeTranscript } from "./actions";
+
 
 export default function MeetingPage() {
 
@@ -106,28 +106,38 @@ export default function Home() {
   };
 
   // Analyze with AI
-  const handleAnalyze = async () => {
-    if (!transcript.trim()) {
-      alert("Cole a transcrição primeiro");
-      return;
-    }
+ const handleAnalyze = async () => {
+  if (!transcript.trim()) {
+    alert("Cole a transcrição primeiro");
+    return;
+  }
 
-    setIsAnalyzing(true);
-    setAnalysisMessage("IA está analisando a transcrição...");
+  setIsAnalyzing(true);
+  setAnalysisMessage("IA está analisando a transcrição...");
 
-    const result = await analyzeTranscript(transcript);
+  try {
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript }),
+    });
+
+    const result = await res.json();
 
     if (result.error) {
       setAnalysisMessage(`Erro: ${result.error}`);
-    } else if (result.actions.length === 0) {
-      setAnalysisMessage("Nenhuma ação identificada na transcrição");
+    } else if (!result.actions || result.actions.length === 0) {
+      setAnalysisMessage("Nenhuma ação identificada");
     } else {
       setSuggestions(result.actions);
       setAnalysisMessage("");
     }
+  } catch (err) {
+    setAnalysisMessage("Erro ao comunicar com a IA");
+  }
 
-    setIsAnalyzing(false);
-  };
+  setIsAnalyzing(false);
+};
 
   // Add manual action
   const handleAddManualAction = () => {
