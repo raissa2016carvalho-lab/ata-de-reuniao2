@@ -1,54 +1,56 @@
-// types/speech-recognition.d.ts
-// Definições de tipos para Web Speech API
+"use server";
 
-interface SpeechRecognitionEvent extends Event {
-  resultIndex: number;
-  results: SpeechRecognitionResultList;
-}
+import OpenAI from "openai";
 
-interface SpeechRecognitionResultList {
-  length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
-}
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-interface SpeechRecognitionResult {
-  isFinal: boolean;
-  length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
-}
+export async function analyzeTranscript(
+  transcript: string
+): Promise<{ actions: string[]; error?: string }> {
+  if (!transcript) {
+    return { actions: [], error: "Transcrição não fornecida" };
+  }
 
-interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
-}
+  if (!process.env.OPENAI_API_KEY) {
+    return { actions: [], error: "Chave da API OpenAI não configurada" };
+  }
 
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
-  message: string;
-}
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            'Você é um assistente especializado em análise de atas de reunião de segurança. Extraia APENAS ações concretas e específicas que precisam ser executadas. Retorne um JSON válido no formato: {"actions": ["ação 1", "ação 2"]}. Seja conciso (máximo 10 palavras por ação), se alguém mencionar o nome do responsável retornar.',
+        },
+        {
+          role: "user",
+          content: `Analise esta transcrição e extraia as ações:\n\n${transcript}`,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 800,
+    });
 
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  maxAlternatives: number;
-  start(): void;
-  stop(): void;
-  abort(): void;
-  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
-  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any) | null;
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onspeechend: ((this: SpeechRecognition, ev: Event) => any) | null;
-}
+    let responseText = completion.choices[0].message.content?.trim() || "";
+    responseText = responseText
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
 
-interface Window {
-  SpeechRecognition: {
-    new (): SpeechRecognition;
-  };
-  webkitSpeechRecognition: {
-    new (): SpeechRecognition;
-  };
+    const result = JSON.parse(responseText);
+    return { actions: result.actions || [] };
+  } catch (error) {
+    console.error("Erro ao analisar:", error);
+    return {
+      actions: [],
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erro ao processar transcrição",
+    };
+  }
 }
