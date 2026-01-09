@@ -5,7 +5,7 @@ import Image from "next/image";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
-  "Ceará - KPI's",
+  "Ceará ",
   "Bahia",
   "Rio Grande do Norte",
   "Minas Gerais",
@@ -327,7 +327,7 @@ export default function Home() {
         {/* Apresentação dos Números */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Apresentação dos Números de Segurança
+            Apresentação dos Números de Segurança - - (Meta de Inspeção, Eventos Ocorridos, Taxa de Frequencia e Gravidade, Tipologia, Inspeões Cruzadas)
           </h3>
           <div className="space-y-3">
             {STATES.map((state) => (
