@@ -1,2 +1,6 @@
-import VoiceRecorder from "./components/VoiceRecorder";
-import { analyzeTranscript } from "./actions";
+"use client";
+import { useState, useRef, useEffect } from "react";
+
+interface VoiceRecorderProps {
+  onTranscriptUpdate: (transcript: string) => void;
+}
