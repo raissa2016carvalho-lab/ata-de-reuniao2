@@ -1,15 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { analyzeTranscript } from "./actions";
 
-/* =========================
-   CONSTANTES
-========================= */
-
 const STATES = [
-  "Ceará",
+  "Ceará ",
   "Bahia",
   "Piauí",
   "Rio Grande do Norte",
@@ -18,16 +14,11 @@ const STATES = [
   "Monitoria",
 ];
 
-/* =========================
-   TIPOS
-========================= */
-
 interface ChecklistItem {
-  type: string; // "Ação" | "Apresentação"
+  type: string;
   text: string;
   area: string;
   done: boolean;
-  time?: string;
 }
 
 interface PreviousActionItem {
@@ -35,228 +26,596 @@ interface PreviousActionItem {
   responsavel: string;
 }
 
-/* =========================
-   FUNÇÕES AUXILIARES
-========================= */
-
-// remove acentos e caracteres estranhos
-const normalizeText = (text: string) =>
-  text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w\s:.-]/g, "")
-    .trim();
-
-// split CSV respeitando aspas
-const splitCSVLine = (line: string) =>
-  line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v =>
-    v.replace(/^"|"$/g, "").trim()
-  );
-
-/* =========================
-   COMPONENTE
-========================= */
-
 export default function Home() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedAreas, setSelectedAreas] = useState<Record<number, string>>({});
+  const [selectedStatus, setSelectedStatus] = useState<Record<number, string>>({});
   const [transcript, setTranscript] = useState("");
   const [manualAction, setManualAction] = useState("");
+  const [objective, setObjective] = useState("");
   const [previousActions, setPreviousActions] = useState<PreviousActionItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
 
-  /* =========================
-     UPLOAD CSV (SÓ AÇÕES)
-  ========================= */
+  // Timer state
+  const [seconds, setSeconds] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Timer functions
+  useEffect(() => {
+    if (isRunning) {
+      timerRef.current = setInterval(() => {
+        setSeconds((s) => s + 1);
+      }, 1000);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isRunning]);
+
+  const formatTime = (totalSeconds: number) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return [hours, mins, secs]
+      .map((v) => String(v).padStart(2, "0"))
+      .join(":");
+  };
+
+  // Load CSV file (reunião anterior)
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-
-    reader.onload = () => {
-      const text = reader.result as string;
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
       const actions: PreviousActionItem[] = [];
 
-      lines.slice(1).forEach(line => {
-        const cols = splitCSVLine(line);
+      lines.slice(1).forEach((line) => {
+        const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
-        const tipo = normalizeText(cols[0] || "").toLowerCase();
-        const acao = cols[1];
-        const responsavel = cols[2];
+        const actionIndex = cols.findIndex(
+          (col) => col && col.toLowerCase().trim().includes("ação")
+        );
 
-        // ✔️ SOMENTE QUANDO A COLUNA ENTRADA FOR "acao"
-        if (tipo === "acao" && acao) {
-          actions.push({
-            action: acao,
-            responsavel: responsavel || "Nao definido",
-          });
+        if (actionIndex !== -1) {
+          const actionText = cols[actionIndex + 1]
+            ?.replace(/"/g, "")
+            .trim();
+          const responsavel =
+            cols[2]?.replace(/"/g, "").trim() || "Não definido";
+
+          if (actionText) {
+            actions.push({
+              action: actionText,
+              responsavel,
+            });
+          }
         }
       });
 
       setPreviousActions(actions);
     };
-
     reader.readAsText(file, "UTF-8");
   };
 
-  /* =========================
-     IA
-  ========================= */
-
+  // Analyze with AI
   const handleAnalyze = async () => {
-    if (!transcript.trim()) return alert("Cole a transcrição");
+    if (!transcript.trim()) {
+      alert("Cole a transcrição primeiro");
+      return;
+    }
 
     setIsAnalyzing(true);
-    setAnalysisMessage("IA analisando...");
+    setAnalysisMessage("IA está analisando a transcrição...");
 
     const result = await analyzeTranscript(transcript);
 
-    if (result.error) setAnalysisMessage(result.error);
-    else setSuggestions(result.actions);
+    if (result.error) {
+      setAnalysisMessage(`Erro: ${result.error}`);
+    } else if (result.actions.length === 0) {
+      setAnalysisMessage("Nenhuma ação identificada na transcrição");
+    } else {
+      setSuggestions(result.actions);
+      setAnalysisMessage("");
+    }
 
     setIsAnalyzing(false);
   };
 
-  /* =========================
-     APROVAR AÇÃO
-  ========================= */
+  // Add manual action
+  const handleAddManualAction = () => {
+    if (manualAction.trim()) {
+      setSuggestions((prev) => [...prev, manualAction.trim()]);
+      setManualAction("");
+    }
+  };
 
+  // Approve action
   const handleApprove = (index: number) => {
-    setChecklist(prev => [
+    const action = suggestions[index];
+    const area = selectedAreas[index] || STATES[0];
+    const status = selectedStatus[index] || "Concluído";
+
+    setChecklist((prev) => [
       ...prev,
       {
         type: "Ação",
-        text: suggestions[index],
-        area: selectedAreas[index] || STATES[0],
-        done: true,
+        text: action,
+        area,
+        done: status === "Concluído",
       },
     ]);
 
-    setSuggestions(prev => prev.filter((_, i) => i !== index));
+    setSuggestions((prev) => prev.filter((_, i) => i !== index));
+    setSelectedAreas((prev) => {
+      const newAreas = { ...prev };
+      delete newAreas[index];
+      return newAreas;
+    });
+    setSelectedStatus((prev) => {
+      const newStatus = { ...prev };
+      delete newStatus[index];
+      return newStatus;
+    });
   };
 
-  /* =========================
-     DOWNLOAD CSV (BONITINHO)
-  ========================= */
+  // Toggle state checkbox (entra como Apresentação)
+  const handleToggleState = (state: string, checked: boolean) => {
+    if (checked) {
+      setChecklist((prev) => [
+        ...prev,
+        {
+          type: "Apresentação",
+          text: state,
+          area: state,
+          done: true,
+        },
+      ]);
+    } else {
+      setChecklist((prev) =>
+        prev.filter((c) => !(c.type === "Apresentação" && c.text === state))
+      );
+    }
+  };
 
+  // Toggle checklist item
+  const handleToggleChecklistItem = (index: number, checked: boolean) => {
+    setChecklist((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, done: checked } : item))
+    );
+  };
+
+  // Download Excel/CSV - Apenas Pendentes + Concluídos
   const handleDownload = () => {
-    const actions = checklist.filter(c => c.type === "Ação");
+    const completedItems = checklist.filter((c) => c.done);
+    const pendingItems = checklist.filter((c) => !c.done);
+    const allItems = [...completedItems, ...pendingItems];
 
-    if (actions.length === 0) {
-      alert("Nenhuma ação para exportar");
+    if (allItems.length === 0) {
+      alert("Marque pelo menos um item antes de exportar");
       return;
     }
 
+    const today = new Date();
+    const dueDate = new Date(today);
+    dueDate.setDate(dueDate.getDate() + 8);
+
+    const formatDate = (d: Date) => d.toISOString().split("T")[0];
+
     let csv =
-      "Tipo,Acao,Responsavel,Hora,Data,Status\n";
+      'Entradas,"Saídas: Decisões e ações",Responsável,Data,Status\n';
 
-    const today = new Date().toISOString().split("T")[0];
+    allItems.forEach((c) => {
+      const entradas = c.type;
+      const saidas = c.text;
+      const responsavel = c.area;
+      const data = formatDate(dueDate);
+      const status = c.done ? "Concluído" : "Pendente";
 
-    actions.forEach(a => {
-      csv += `"acao","${normalizeText(a.text)}","${normalizeText(
-        a.area
-      )}","${a.time || ""}","${today}","${
-        a.done ? "Concluido" : "Pendente"
-      }"\n`;
+      csv += `"${entradas}","${saidas}","${responsavel}","${data}","${status}"\n`;
     });
 
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `RELATORIO_ACOES_${today}.csv`;
-    link.click();
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
+    a.click();
   };
 
-  /* =========================
-     RENDER
-  ========================= */
+  const completedItems = checklist.filter((c) => c.done);
+  const pendingItems = checklist.filter((c) => !c.done);
 
   return (
-    <div className="p-6">
-      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl">
-
-        {/* HEADER */}
-        <div className="bg-gradient-to-r from-[#1e3c72] to-[#2a5298] text-white p-6 flex justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Reunião Semanal</h1>
-            <p className="text-sm opacity-90">Checklist Inteligente</p>
+    <div className="p-5 md:p-8">
+      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header com logo */}
+        <div className="bg-gradient-to-r from-[#1e3c72] to-[#2a5298] text-white py-6 px-8">
+          <div className="flex items-center justify-between">
+            <div className="text-left">
+              <h2 className="text-3xl font-bold mb-1">
+                Reunião Semanal de Segurança
+              </h2>
+              <p className="opacity-90 text-sm md:text-base">
+                Há 38 anos, unindo energias para ir mais longe!
+              </p>
+            </div>
+            <div className="hidden md:block">
+              <Image
+                src="/Logo-Beq-branca.jpg"
+                alt="Logo Beq"
+                width={140}
+                height={40}
+                className="object-contain"
+              />
+            </div>
           </div>
-          <Image src="/Logo-Beq-branca.jpg" alt="logo" width={120} height={40} />
         </div>
 
-        {/* CSV ANTERIOR */}
-        <section className="p-6">
-          <h2 className="font-bold mb-3">Ações da reunião anterior</h2>
-          <input type="file" accept=".csv" onChange={handleFileLoad} />
-
-          <ul className="mt-4 space-y-2">
-            {previousActions.map((a, i) => (
-              <li key={i} className="p-3 border rounded">
-                <strong>{a.action}</strong>
-                <span className="ml-2 text-sm text-gray-600">
-                  ({a.responsavel})
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* TRANSCRIÇÃO */}
-        <section className="p-6 border-t">
-          <textarea
-            value={transcript}
-            onChange={e => setTranscript(e.target.value)}
-            className="w-full h-40 border rounded p-3"
-            placeholder="Cole a transcrição..."
+        {/* Ações da Reunião Anterior */}
+        <section className="p-8 border-b border-gray-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-5">
+            Ações da Reunião Anterior
+          </h3>
+          <input
+            type="file"
+            accept=".csv"
+            onChange={handleFileLoad}
+            className="w-full p-3 border-2 border-gray-200 rounded-xl mb-3 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-500 file:text-white file:font-semibold hover:file:bg-emerald-600 file:cursor-pointer"
           />
-
-          <button
-            onClick={handleAnalyze}
-            className="mt-3 bg-emerald-600 text-white px-6 py-3 rounded"
-          >
-            Analisar IA
-          </button>
+          <div className="space-y-3">
+            {previousActions.length === 0 ? (
+              <p className="text-center py-5 text-gray-500">
+                Carregue um arquivo CSV para ver as ações anteriores
+              </p>
+            ) : (
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                        #
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                        Ação da reunião anterior
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                        Responsável
+                      </th>
+                      <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {previousActions.map((item, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-600 align-top">
+                          {i + 1}
+                        </td>
+                        <td className="px-3 py-2 text-gray-800 align-top">
+                          {item.action}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700 align-top">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                            {item.responsavel}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center align-top">
+                          <select
+                            className="px-2 py-1 border-2 border-gray-200 rounded-lg text-xs focus:outline-none focus:border-emerald-500"
+                            defaultValue="Pendente"
+                          >
+                            <option value="Pendente">Pendente</option>
+                            <option value="Concluído">OK</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </section>
 
-        {/* AÇÕES */}
-        <section className="p-6 border-t">
-          {suggestions.map((s, i) => (
-            <div key={i} className="flex gap-3 mb-2">
-              <span className="flex-1">{s}</span>
-              <select
-                onChange={e =>
-                  setSelectedAreas(p => ({ ...p, [i]: e.target.value }))
-                }
+        {/* Apresentação dos Números */}
+        <section className="p-8 border-b border-gray-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-5">
+            Apresentação dos Números de Segurança - - (Meta de Inspeção, Eventos Ocorridos, Taxa de Frequencia e Gravidade, Tipologia, Inspeões Cruzadas)
+          </h3>
+          <div className="space-y-3">
+            {STATES.map((state) => (
+              <label
+                key={state}
+                className="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition-all"
               >
-                {STATES.map(st => (
-                  <option key={st}>{st}</option>
-                ))}
-              </select>
-              <button
-                onClick={() => handleApprove(i)}
-                className="bg-blue-600 text-white px-3 rounded"
-              >
-                Aprovar
-              </button>
+                <input
+                  type="checkbox"
+                  onChange={(e) => handleToggleState(state, e.target.checked)}
+                  className="w-5 h-5 accent-emerald-500"
+                />
+                <span className="font-semibold">{state}</span>
+              </label>
+            ))}
+          </div>
+
+          {/* Timer */}
+          <div className="text-5xl font-extrabold text-center text-[#1e3c72] my-6 tracking-wider font-mono">
+            {formatTime(seconds)}
+          </div>
+          <div className="flex gap-3 flex-wrap">
+            <button
+              onClick={() => setIsRunning(true)}
+              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all"
+            >
+              Iniciar
+            </button>
+            <button
+              onClick={() => setIsRunning(false)}
+              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all"
+            >
+              Pausar
+            </button>
+            <button
+              onClick={() => {
+                setIsRunning(false);
+                setSeconds(0);
+              }}
+              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all"
+            >
+              Resetar
+            </button>
+          </div>
+        </section>
+
+        {/* Transcrição / ações atuais */}
+        <section className="p-8 border-b border-gray-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-5">
+            Transcrição da Reunião
+          </h3>
+          <div className="grid md:grid-cols-2 gap-8">
+            <div>
+              <textarea
+                value={transcript}
+                onChange={(e) => setTranscript(e.target.value)}
+                placeholder="Cole a transcrição completa da reunião aqui..."
+                className="w-full h-44 p-4 border-2 border-gray-200 rounded-xl resize-y focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              />
+
+              <div className="flex gap-3 mt-3">
+                <button
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing}
+                  className="flex-1 py-4 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
+                >
+                  {isAnalyzing ? "Analisando com IA..." : "Analisar com IA"}
+                </button>
+
+                <button
+                  onClick={handleAddManualAction}
+                  disabled={!manualAction.trim() || isAnalyzing}
+                  className="px-6 py-4 bg-purple-600 text-white font-semibold rounded-xl hover:bg-purple-700 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
+                >
+                  ➕ Manual
+                </button>
+              </div>
+
+              <input
+                type="text"
+                value={manualAction}
+                onChange={(e) => setManualAction(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && manualAction.trim()) {
+                    handleAddManualAction();
+                  }
+                }}
+                placeholder="Digite ação manual + Enter ou botão ➕"
+                className="w-full mt-3 p-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+              />
             </div>
-          ))}
+
+            <div>
+              <h4 className="text-lg font-semibold text-gray-800 mb-4">
+                Ações identificadas ({suggestions.length})
+              </h4>
+              {analysisMessage && (
+                <p className="text-center py-5 text-gray-500 mb-4">
+                  {analysisMessage}
+                </p>
+              )}
+              {suggestions.length === 0 && !analysisMessage ? (
+                <p className="text-center py-5 text-gray-500">
+                  As ações aparecerão aqui (IA + Manual)
+                </p>
+              ) : (
+                <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-xl">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                          #
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                          Ação
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                          Responsável
+                        </th>
+                        <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                          Aprovar
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {suggestions.map((suggestion, i) => (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-600 align-top">
+                            {i + 1}
+                          </td>
+                          <td className="px-3 py-2 text-gray-800 align-top text-xs">
+                            {suggestion}
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <select
+                              value={selectedAreas[i] || STATES[0]}
+                              onChange={(e) =>
+                                setSelectedAreas((prev) => ({
+                                  ...prev,
+                                  [i]: e.target.value,
+                                }))
+                              }
+                              className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                            >
+                              {STATES.map((state) => (
+                                <option key={state} value={state}>
+                                  {state}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-3 py-2 text-center align-top">
+                            <button
+                              onClick={() => handleApprove(i)}
+                              className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-all"
+                            >
+                              Aprovar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </section>
 
-        {/* DOWNLOAD */}
-        <section className="p-6 border-t">
+        {/* Objetivo */}
+        <section className="p-8 border-b border-gray-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-5">
+            Objetivo da Reunião
+          </h3>
+          <input
+            type="text"
+            value={objective}
+            onChange={(e) => setObjective(e.target.value)}
+            placeholder="Descreva o objetivo principal desta reunião"
+            className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          />
+        </section>
+
+        {/* Ações Pendentes */}
+        {pendingItems.length > 0 && (
+          <section className="p-8 border-b border-gray-200 bg-yellow-50">
+            <h3 className="text-xl font-bold text-gray-800 mb-5">
+              ⏳ Ações Pendentes ({pendingItems.length})
+            </h3>
+            <div className="border border-yellow-300 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-yellow-100">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                      Ação
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                      Responsável
+                    </th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                      Marcar Concluído
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-yellow-200">
+                  {pendingItems.map((item, i) => (
+                    <tr key={i} className="hover:bg-yellow-100">
+                      <td className="px-3 py-2 text-gray-800">{item.text}</td>
+                      <td className="px-3 py-2 text-gray-700">
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                          {item.area}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          onClick={() => {
+                            const itemIndex = checklist.findIndex(
+                              (c) => c.text === item.text && !c.done
+                            );
+                            if (itemIndex !== -1) {
+                              handleToggleChecklistItem(itemIndex, true);
+                            }
+                          }}
+                          className="px-3 py-1 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-all"
+                        >
+                          ✅ Concluído
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* Checklist Final - Apenas Concluídos */}
+        <section className="p-8">
+          <h3 className="text-xl font-bold text-gray-800 mb-5">
+            Checklist Final do Relatório ({completedItems.length} itens)
+          </h3>
+          {completedItems.length === 0 ? (
+            <p className="text-center py-5 text-gray-500">
+              Nenhum item concluído
+            </p>
+          ) : (
+            <div className="space-y-3 mb-5">
+              {completedItems.map((item, i) => (
+                <div
+                  key={i}
+                  className="bg-gray-50 p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm hover:shadow-md transition-all"
+                >
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={(e) => {
+                        const itemIndex = checklist.findIndex(
+                          (c) => c.text === item.text
+                        );
+                        if (itemIndex !== -1) {
+                          handleToggleChecklistItem(
+                            itemIndex,
+                            e.target.checked
+                          );
+                        }
+                      }}
+                      className="w-5 h-5 accent-emerald-500"
+                    />
+                    <span className="flex-1">
+                      <strong>{item.type}:</strong> {item.text}
+                      <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                        {item.area}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
           <button
             onClick={handleDownload}
-            className="w-full bg-[#217346] text-white py-4 rounded-xl"
+            disabled={completedItems.length === 0 && pendingItems.length === 0}
+            className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            📥 Baixar Excel (somente ações)
+            📥 Baixar Relatório ({completedItems.length + pendingItems.length} itens)
           </button>
         </section>
       </div>
