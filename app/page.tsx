@@ -219,14 +219,16 @@ export default function Home() {
     );
   };
 
-  // Download Excel/CSV com tempo
+  // Download Excel/CSV - APENAS AÇÕES
   const handleDownload = () => {
-    const completedItems = checklist.filter((c) => c.done);
-    const pendingItems = checklist.filter((c) => !c.done);
-    const allItems = [...completedItems, ...pendingItems];
+    // Filtra APENAS itens do tipo "Ação"
+    const actionItems = checklist.filter((c) => c.type === "Ação");
+    const completedActionItems = actionItems.filter((c) => c.done);
+    const pendingActionItems = actionItems.filter((c) => !c.done);
+    const allActionItems = [...completedActionItems, ...pendingActionItems];
 
-    if (allItems.length === 0) {
-      alert("Marque pelo menos um item antes de exportar");
+    if (allActionItems.length === 0) {
+      alert("Marque pelo menos uma ação antes de exportar");
       return;
     }
 
@@ -236,20 +238,15 @@ export default function Home() {
 
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
-    let csv =
-      'Entradas,"Saídas: Decisões e ações",Responsável,Data,Status,Tempo\n';
+    let csv = '"Saídas: Decisões e ações",Responsável,Data,Status\n';
 
-    allItems.forEach((c) => {
-      const entradas = c.type;
+    allActionItems.forEach((c) => {
       const saidas = c.text;
       const responsavel = c.area;
       const data = formatDate(dueDate);
       const status = c.done ? "Concluído" : "Pendente";
-      
-      // Usa tempo salvo ou tempo em execução
-      let tempo = c.time || (c.type === "Apresentação" ? formatItemTime(c.text) : "");
 
-      csv += `"${entradas}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
+      csv += `"${saidas}","${responsavel}","${data}","${status}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -555,9 +552,6 @@ export default function Home() {
                       Responsável
                     </th>
                     <th className="px-3 py-2 text-center font-semibold text-gray-700">
-                      Tempo
-                    </th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700">
                       Marcar Concluído
                     </th>
                   </tr>
@@ -570,9 +564,6 @@ export default function Home() {
                         <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                           {item.area}
                         </span>
-                      </td>
-                      <td className="px-3 py-2 text-center text-sm font-mono">
-                        {item.time || '-'}
                       </td>
                       <td className="px-3 py-2 text-center">
                         <button
@@ -597,18 +588,20 @@ export default function Home() {
           </section>
         )}
 
-        {/* Checklist Final - Apenas Concluídos */}
+        {/* Checklist Final - Apenas Ações Concluídas */}
         <section className="p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Checklist Final do Relatório ({completedItems.length} itens)
+            Checklist Final do Relatório ({checklist.filter(c => c.type === "Ação" && c.done).length} ações)
           </h3>
-          {completedItems.length === 0 ? (
+          {checklist.filter(c => c.type === "Ação" && c.done).length === 0 ? (
             <p className="text-center py-5 text-gray-500">
-              Nenhum item concluído
+              Nenhuma ação concluída
             </p>
           ) : (
             <div className="space-y-3 mb-5">
-              {completedItems.map((item, i) => (
+              {checklist
+                .filter(c => c.type === "Ação" && c.done)
+                .map((item, i) => (
                 <div
                   key={i}
                   className="bg-gray-50 p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm hover:shadow-md transition-all"
@@ -631,15 +624,10 @@ export default function Home() {
                       className="w-5 h-5 accent-emerald-500"
                     />
                     <span className="flex-1">
-                      <strong>{item.type}:</strong> {item.text}
+                      <strong>Ação:</strong> {item.text}
                       <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                         {item.area}
                       </span>
-                      {(item.time || (item.type === "Apresentação" && presentationTimes[item.text])) && (
-                        <span className="ml-2 bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-mono font-bold shadow-sm">
-                          {item.time || formatItemTime(item.text)}
-                        </span>
-                      )}
                     </span>
                   </label>
                 </div>
@@ -648,10 +636,10 @@ export default function Home() {
           )}
           <button
             onClick={handleDownload}
-            disabled={completedItems.length === 0 && pendingItems.length === 0}
+            disabled={checklist.filter(c => c.type === "Ação").length === 0}
             className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            📥 Baixar Relatório ({completedItems.length + pendingItems.length} itens)
+            📥 Baixar Relatório ({checklist.filter(c => c.type === "Ação").length} ações)
           </button>
         </section>
       </div>
