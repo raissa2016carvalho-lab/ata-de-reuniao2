@@ -5,7 +5,7 @@ import Image from "next/image";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
-  "Ceará",
+  "Ceará ",
   "Bahia",
   "Piauí",
   "Rio Grande do Norte",
@@ -27,20 +27,11 @@ interface PreviousActionItem {
   responsavel: string;
 }
 
-/* =========================
-   UTIL – REMOVE ACENTOS / EXCEL SAFE
-========================= */
-const normalizeText = (text: string = "") =>
-  text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9 .,;:!?@()-]/g, "")
-    .trim();
-
 export default function Home() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedAreas, setSelectedAreas] = useState<Record<number, string>>({});
+  const [selectedStatus, setSelectedStatus] = useState<Record<number, string>>({});
   const [transcript, setTranscript] = useState("");
   const [manualAction, setManualAction] = useState("");
   const [objective, setObjective] = useState("");
@@ -52,31 +43,37 @@ export default function Home() {
   const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
   /* =========================
-     LOAD CSV – SOMENTE AÇÕES
+     LOAD CSV – REUNIÃO ANTERIOR
   ========================= */
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
+
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const lines = text.split(/\r?\n/).filter((l) => l.trim());
-      if (lines.length < 2) return;
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
 
       const actions: PreviousActionItem[] = [];
 
       lines.slice(1).forEach((line) => {
-        const cols = line
-          .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
-          .map((c) => c.replace(/"/g, "").trim());
+        const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
-        const entrada = cols[0];
-        const actionText = cols[1];
-        const responsavel = cols[2] || "Não definido";
+        const entrada =
+          cols[0]?.replace(/"/g, "").trim().toLowerCase() || "";
 
-        if (entrada === "Ação" && actionText) {
-          actions.push({ action: actionText, responsavel });
+        if (entrada.includes("ação")) {
+          const actionText = cols[1]?.replace(/"/g, "").trim();
+          const responsavel =
+            cols[2]?.replace(/"/g, "").trim() || "Não definido";
+
+          if (actionText) {
+            actions.push({
+              action: actionText,
+              responsavel,
+            });
+          }
         }
       });
 
@@ -103,7 +100,7 @@ export default function Home() {
     if (result.error) {
       setAnalysisMessage(`Erro: ${result.error}`);
     } else if (result.actions.length === 0) {
-      setAnalysisMessage("Nenhuma ação identificada");
+      setAnalysisMessage("Nenhuma ação identificada na transcrição");
     } else {
       setSuggestions(result.actions);
       setAnalysisMessage("");
@@ -112,20 +109,32 @@ export default function Home() {
     setIsAnalyzing(false);
   };
 
+  /* =========================
+     AÇÃO MANUAL
+  ========================= */
   const handleAddManualAction = () => {
     if (manualAction.trim()) {
-      setSuggestions((p) => [...p, manualAction.trim()]);
+      setSuggestions((prev) => [...prev, manualAction.trim()]);
       setManualAction("");
     }
   };
 
+  /* =========================
+     APROVAR AÇÃO
+  ========================= */
   const handleApprove = (index: number) => {
     const action = suggestions[index];
     const area = selectedAreas[index] || STATES[0];
+    const status = selectedStatus[index] || "Concluído";
 
     setChecklist((prev) => [
       ...prev,
-      { type: "Ação", text: action, area, done: true },
+      {
+        type: "Ação",
+        text: action,
+        area,
+        done: status === "Concluído",
+      },
     ]);
 
     setSuggestions((prev) => prev.filter((_, i) => i !== index));
@@ -135,59 +144,91 @@ export default function Home() {
      TIMER APRESENTAÇÃO
   ========================= */
   const formatItemTime = (state: string) => {
-    const total = presentationTimes[state] || 0;
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    const totalSeconds = presentationTimes[state] || 0;
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const handleStopTimer = (state: string) => {
+    if (individualTimers[state]) {
+      clearInterval(individualTimers[state]);
+
+      setIndividualTimers((prev) => {
+        const t = { ...prev };
+        delete t[state];
+        return t;
+      });
+
+      const finalTime = formatItemTime(state);
+
+      setChecklist((prev) =>
+        prev.map((item) =>
+          item.type === "Apresentação" && item.text === state
+            ? { ...item, time: finalTime }
+            : item
+        )
+      );
+    }
   };
 
   const handleToggleState = (state: string, checked: boolean) => {
     if (checked) {
-      const timer = setInterval(() => {
-        setPresentationTimes((p) => ({
-          ...p,
-          [state]: (p[state] || 0) + 1,
+      const timerId = setInterval(() => {
+        setPresentationTimes((prev) => ({
+          ...prev,
+          [state]: (prev[state] || 0) + 1,
         }));
       }, 1000);
 
-      setIndividualTimers((p) => ({ ...p, [state]: timer }));
+      setIndividualTimers((prev) => ({
+        ...prev,
+        [state]: timerId,
+      }));
 
-      setChecklist((p) => [
-        ...p,
-        { type: "Apresentação", text: state, area: state, done: true },
+      setChecklist((prev) => [
+        ...prev.filter(
+          (c) => !(c.type === "Apresentação" && c.text === state)
+        ),
+        {
+          type: "Apresentação",
+          text: state,
+          area: state,
+          done: true,
+        },
       ]);
     } else {
-      clearInterval(individualTimers[state]);
+      handleStopTimer(state);
+
+      setChecklist((prev) =>
+        prev.filter(
+          (c) => !(c.type === "Apresentação" && c.text === state)
+        )
+      );
     }
   };
 
   /* =========================
-     DOWNLOAD CSV – FINAL
+     DOWNLOAD CSV (IGUAL AO ORIGINAL)
   ========================= */
   const handleDownload = () => {
-    const actions = checklist.filter((c) => c.type === "Ação");
-
-    if (actions.length === 0) {
-      alert("Nenhuma ação para exportar");
-      return;
-    }
+    const actionItems = checklist.filter((c) => c.type === "Ação");
+    if (actionItems.length === 0) return;
 
     const today = new Date().toISOString().split("T")[0];
 
-    let csv =
-      "Saidas_Decisoes_e_Acoes,Tipo,Responsavel,Data,Hora,Status\n";
+    let csv = `"Saídas: Decisões e ações",Responsável,Data,Status\n`;
 
-    actions.forEach((c) => {
-      csv += `"${normalizeText(c.text)}",` +
-             `"${normalizeText(c.type)}",` +
-             `"${normalizeText(c.area)}",` +
-             `"${today}",` +
-             `"${normalizeText(c.time || "")}",` +
-             `"${c.done ? "Concluido" : "Pendente"}"\n`;
+    actionItems.forEach((c) => {
+      csv += `"${c.text}","${c.area}","${today}","${
+        c.done ? "Concluído" : "Pendente"
+      }"\n`;
     });
 
-    const BOM = "\uFEFF";
-    const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
 
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -195,37 +236,40 @@ export default function Home() {
     a.click();
   };
 
+  const pendingItems = checklist.filter((c) => !c.done);
+
   /* =========================
      JSX
   ========================= */
   return (
     <div className="p-5 md:p-8">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
         <div className="bg-gradient-to-r from-[#1e3c72] to-[#2a5298] text-white py-6 px-8">
-          <h2 className="text-3xl font-bold">Reunião Semanal de Segurança</h2>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-bold mb-1">
+                Reunião Semanal de Segurança
+              </h2>
+              <p className="opacity-90">
+                Há 38 anos, unindo energias para ir mais longe!
+              </p>
+            </div>
+
+            <Image
+              src="/Logo-Beq-branca.jpg"
+              alt="Logo Beq"
+              width={140}
+              height={40}
+            />
+          </div>
         </div>
 
-        <section className="p-8 border-b">
-          <h3 className="font-bold mb-3">Ações da Reunião Anterior</h3>
-          <input type="file" accept=".csv" onChange={handleFileLoad} />
-        </section>
-
-        <section className="p-8 border-b">
-          <textarea
-            value={transcript}
-            onChange={(e) => setTranscript(e.target.value)}
-            className="w-full h-40 border p-3"
-            placeholder="Cole a transcrição"
-          />
-          <button onClick={handleAnalyze} className="mt-3 bg-emerald-500 text-white px-6 py-2 rounded">
-            Analisar
-          </button>
-        </section>
-
+        {/* botão final */}
         <section className="p-8">
           <button
             onClick={handleDownload}
-            className="w-full py-4 bg-[#217346] text-white rounded-xl font-semibold"
+            className="w-full py-4 bg-[#217346] text-white font-semibold rounded-xl"
           >
             📥 Baixar Relatório
           </button>
