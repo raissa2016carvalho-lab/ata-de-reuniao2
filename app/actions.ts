@@ -20,7 +20,7 @@ export async function analyzeTranscript(
         {
           role: "system",
           content:
-            'Você é um assistente especializado em análise de atas de reunião de segurança. Extraia APENAS ações concretas e específicas que precisam ser executadas. Retorne um JSON válido no formato: {"actions": ["ação 1", "ação 2"]}. Seja conciso (máximo 10 palavras por ação), se alguem mencionar o nome do resposavel retornar.',
+            'Você é um assistente especializado em análise de atas de reunião de segurança. Extraia APENAS ações concretas e específicas que precisam ser executadas. Retorne um JSON válido no formato: {"actions": ["ação 1", "ação 2"]}. Seja conciso (máximo 20 palavras por ação), se tiver o nome da pessoa que falou na descrição com ":" sempre mencionar antes.',
         },
         {
           role: "user",
