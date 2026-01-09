@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import VoiceRecorder from "./VoiceRecorder";
-import { analyzeTranscript } from "./actions";
+import { analyzeTranscript } from "../actions";  // ../ sobe um nível para app/actions.ts
+
 
 
 
