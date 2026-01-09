@@ -1,9 +1,9 @@
 "use client";
-
-import { useState, useEffect, useRef } from "react";
-import Image from "next/image";
-import { analyzeTranscript } from "./actions";
+import { useState } from "react";
 import VoiceRecorder from "./VoiceRecorder";
+import { analyzeTranscript } from "./actions";
+
+export default function MeetingPage() {
 
 const STATES = [
   "Ceará",
