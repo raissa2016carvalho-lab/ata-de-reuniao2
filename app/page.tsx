@@ -276,7 +276,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
             </div>
             <div className="hidden md:block">
               <Image
-                src="/Logo-Beq-branca.jpg"
+                src="/LogoBeqbranca.jpg"
                 alt="Logo Beq"
                 width={140}
                 height={40}
