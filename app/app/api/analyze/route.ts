@@ -10,17 +10,7 @@ export async function POST(req: Request) {
     const { transcript } = await req.json();
 
     if (!transcript) {
-      return NextResponse.json(
-        { actions: [], error: "Transcrição não fornecida" },
-        { status: 400 }
-      );
-    }
-
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(
-        { actions: [], error: "Chave da OpenAI não configurada" },
-        { status: 500 }
-      );
+      return NextResponse.json({ actions: [], error: "Transcrição vazia" });
     }
 
     const completion = await openai.chat.completions.create({
@@ -29,7 +19,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            'Extraia APENAS ações concretas e específicas. Retorne JSON válido: {"actions":["ação 1"]}',
+            'Você é um assistente especializado em análise de atas de reunião de segurança. Extraia APENAS ações concretas e específicas. Retorne JSON válido: {"actions": []}. Máx 10 palavras.',
         },
         {
           role: "user",
@@ -40,14 +30,11 @@ export async function POST(req: Request) {
       max_tokens: 800,
     });
 
-    let text = completion.choices[0].message.content || "";
-    text = text.replace(/```json|```/g, "").trim();
+    const raw =
+      completion.choices[0].message.content?.replace(/```json|```/g, "") || "{}";
 
-    const result = JSON.parse(text);
-
-    return NextResponse.json({ actions: result.actions || [] });
-  } catch (err: any) {
-    console.error(err);
+    return NextResponse.json(JSON.parse(raw));
+  } catch (e) {
     return NextResponse.json(
       { actions: [], error: "Erro ao analisar transcrição" },
       { status: 500 }
