@@ -7,9 +7,11 @@ import { analyzeTranscript } from "./actions";
 const STATES = [
   "Ceará ",
   "Bahia",
+  "Piauí",
   "Rio Grande do Norte",
   "Minas Gerais",
   "São Paulo",
+  "Monitoria",
 ];
 
 interface ChecklistItem {
