@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import VoiceRecorder from "./VoiceRecorder";
+import { analyzeTranscript } from "./actions";
+
 
 
 const STATES = [
