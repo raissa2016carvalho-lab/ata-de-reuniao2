@@ -38,34 +38,9 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
 
-  // Timer state
-  const [seconds, setSeconds] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Timer functions
-  useEffect(() => {
-    if (isRunning) {
-      timerRef.current = setInterval(() => {
-        setSeconds((s) => s + 1);
-      }, 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRunning]);
-
-  const formatTime = (totalSeconds: number) => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    return [hours, mins, secs]
-      .map((v) => String(v).padStart(2, "0"))
-      .join(":");
-  };
+  // Timers individuais para apresentações por estado
+  const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
+  const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
   // Load CSV file (reunião anterior)
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,9 +142,21 @@ export default function Home() {
     });
   };
 
-  // Toggle state checkbox (entra como Apresentação)
+  // Toggle state checkbox com timer automático
   const handleToggleState = (state: string, checked: boolean) => {
+    const itemKey = state;
+    
     if (checked) {
+      // Inicia timer individual para este estado
+      const timerId = setInterval(() => {
+        setPresentationTimes(prev => ({
+          ...prev,
+          [itemKey]: (prev[itemKey] || 0) + 1
+        }));
+      }, 1000);
+      
+      setIndividualTimers(prev => ({ ...prev, [itemKey]: timerId }));
+      
       setChecklist((prev) => [
         ...prev,
         {
@@ -180,10 +167,33 @@ export default function Home() {
         },
       ]);
     } else {
+      // Para e limpa timer
+      if (individualTimers[itemKey]) {
+        clearInterval(individualTimers[itemKey]);
+        const newTimers = { ...individualTimers };
+        delete newTimers[itemKey];
+        setIndividualTimers(newTimers);
+      }
+      
       setChecklist((prev) =>
         prev.filter((c) => !(c.type === "Apresentação" && c.text === state))
       );
+      
+      // Limpa tempo deste item
+      setPresentationTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[itemKey];
+        return newTimes;
+      });
     }
+  };
+
+  // Formatar tempo individual
+  const formatItemTime = (state: string) => {
+    const totalSeconds = presentationTimes[state] || 0;
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
   // Toggle checklist item
@@ -193,7 +203,7 @@ export default function Home() {
     );
   };
 
-  // Download Excel/CSV - Apenas Pendentes + Concluídos
+  // Download Excel/CSV com tempo
   const handleDownload = () => {
     const completedItems = checklist.filter((c) => c.done);
     const pendingItems = checklist.filter((c) => !c.done);
@@ -211,7 +221,7 @@ export default function Home() {
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
     let csv =
-      'Entradas,"Saídas: Decisões e ações",Responsável,Data,Status\n';
+      'Entradas,"Saídas: Decisões e ações",Responsável,Data,Status,Tempo\n';
 
     allItems.forEach((c) => {
       const entradas = c.type;
@@ -219,8 +229,14 @@ export default function Home() {
       const responsavel = c.area;
       const data = formatDate(dueDate);
       const status = c.done ? "Concluído" : "Pendente";
+      
+      // Pega tempo para apresentações
+      let tempo = "";
+      if (c.type === "Apresentação") {
+        tempo = formatItemTime(c.text);
+      }
 
-      csv += `"${entradas}","${saidas}","${responsavel}","${data}","${status}"\n`;
+      csv += `"${entradas}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -326,53 +342,40 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Apresentação dos Números */}
+        {/* Apresentação dos Números - COM TIMER AUTOMÁTICO */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Apresentação dos Números de Segurança - - (Meta de Inspeção, Eventos Ocorridos, Taxa de Frequencia e Gravidade, Tipologia, Inspeões Cruzadas)
+            Apresentação dos Números de Segurança (Meta de Inspeção, Eventos Ocorridos, Taxa de Frequencia e Gravidade, Tipologia, Inspeões Cruzadas)
           </h3>
           <div className="space-y-3">
-            {STATES.map((state) => (
-              <label
-                key={state}
-                className="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition-all"
-              >
-                <input
-                  type="checkbox"
-                  onChange={(e) => handleToggleState(state, e.target.checked)}
-                  className="w-5 h-5 accent-emerald-500"
-                />
-                <span className="font-semibold">{state}</span>
-              </label>
-            ))}
-          </div>
-
-          {/* Timer */}
-          <div className="text-5xl font-extrabold text-center text-[#1e3c72] my-6 tracking-wider font-mono">
-            {formatTime(seconds)}
-          </div>
-          <div className="flex gap-3 flex-wrap">
-            <button
-              onClick={() => setIsRunning(true)}
-              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all"
-            >
-              Iniciar
-            </button>
-            <button
-              onClick={() => setIsRunning(false)}
-              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all"
-            >
-              Pausar
-            </button>
-            <button
-              onClick={() => {
-                setIsRunning(false);
-                setSeconds(0);
-              }}
-              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all"
-            >
-              Resetar
-            </button>
+            {STATES.map((state) => {
+              const isChecked = checklist.some(c => c.type === "Apresentação" && c.text === state);
+              return (
+                <label
+                  key={state}
+                  className={`flex items-center justify-between gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                    isChecked 
+                      ? 'border-emerald-500 bg-emerald-50 shadow-md' 
+                      : 'border-gray-200 hover:border-emerald-500 hover:bg-emerald-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={(e) => handleToggleState(state, e.target.checked)}
+                      className="w-5 h-5 accent-emerald-500"
+                    />
+                    <span className="font-semibold">{state}</span>
+                  </div>
+                  {isChecked && (
+                    <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-sm font-mono min-w-[60px] text-right">
+                      {formatItemTime(state)}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
           </div>
         </section>
 
@@ -604,6 +607,11 @@ export default function Home() {
                       <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                         {item.area}
                       </span>
+                      {item.type === "Apresentação" && (
+                        <span className="ml-2 bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full text-xs font-mono">
+                          {formatItemTime(item.text)}
+                        </span>
+                      )}
                     </span>
                   </label>
                 </div>
