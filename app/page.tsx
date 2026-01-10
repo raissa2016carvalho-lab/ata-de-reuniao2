@@ -213,13 +213,17 @@ export default function Home() {
         const actionText = cols[acaoIdx] || "";
         const responsavel = cols[responsavelIdx] || "Não definido";
 
-        // Aceita "Ação" ou variações (AÃ§Ã£o, acao, etc)
+        // Aceita APENAS "Ação" (ignora "Apresentação")
         const isAction = entrada.toLowerCase().includes('acao') || 
                         entrada.toLowerCase().includes('ação') || 
                         entrada === 'Ação' ||
                         entrada.includes('Ã§Ã£o');
+        
+        // Ignora explicitamente apresentações
+        const isPresentation = entrada.toLowerCase().includes('apresenta') ||
+                              entrada.toLowerCase().includes('apresentação');
 
-        if (isAction && actionText && actionText.length > 3) {
+        if (isAction && !isPresentation && actionText && actionText.length > 3) {
           actions.push({
             action: actionText,
             responsavel,
