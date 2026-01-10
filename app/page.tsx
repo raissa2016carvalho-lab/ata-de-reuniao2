@@ -77,14 +77,10 @@ export default function Home() {
           if (finalText) {
             setFinalTranscript(prev => prev + finalText);
             
-            // Detectar comando "anotar na ata"
+            // Detectar comando "anotar na ata" e adicionar como ação direta
             const lowerText = finalText.toLowerCase();
             if (lowerText.includes("anotar na ata") || lowerText.includes("anotar ata")) {
-              // Extrair texto antes do comando
-              const textBeforeCommand = finalText.split(/anotar na ata|anotar ata/i)[0].trim();
-              if (textBeforeCommand.length > 10) {
-                setSuggestions(prev => [...prev, textBeforeCommand]);
-              }
+              setSuggestions(prev => [...prev, finalText.trim()]);
             }
           }
         };
