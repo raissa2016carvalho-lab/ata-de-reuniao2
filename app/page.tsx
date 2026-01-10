@@ -77,7 +77,7 @@ export default function Home() {
             // Adiciona à transcrição completa que fica visível
             setTranscript(prev => {
               const newTranscript = prev + finalText;
-              // Analisa automaticamente com IA a cada 5 segundos de texto acumulado
+              // Analisa automaticamente com IA a cada 500 caracteres de texto acumulado
               if (newTranscript.length % 500 < finalText.length) {
                 analyzeTranscriptAuto(newTranscript);
               }
@@ -145,9 +145,9 @@ export default function Home() {
       if (!result.error && result.actions.length > 0) {
         // Adiciona apenas ações novas (evita duplicatas)
         setSuggestions(prev => {
-          const existingActions = new Set(prev.map(a => a.toLowerCase()));
+          const existingActions = new Set(prev.map(a => a.toLowerCase().trim()));
           const newActions = result.actions.filter(
-            action => !existingActions.has(action.toLowerCase())
+            action => !existingActions.has(action.toLowerCase().trim())
           );
           return [...prev, ...newActions];
         });
@@ -195,6 +195,7 @@ export default function Home() {
     reader.readAsText(file, "UTF-8");
   };
 
+  // Analisar com IA - MANTÉM ações anteriores
   const handleAnalyze = async () => {
     if (!transcript.trim()) {
       alert("Cole a transcrição primeiro");
@@ -211,8 +212,16 @@ export default function Home() {
     } else if (result.actions.length === 0) {
       setAnalysisMessage("Nenhuma ação identificada na transcrição");
     } else {
-      setSuggestions(result.actions);
-      setAnalysisMessage("");
+      // MANTÉM as ações anteriores e adiciona as novas
+      setSuggestions(prev => {
+        const existingActions = new Set(prev.map(a => a.toLowerCase().trim()));
+        const newActions = result.actions.filter(
+          action => !existingActions.has(action.toLowerCase().trim())
+        );
+        return [...prev, ...newActions];
+      });
+      setAnalysisMessage(`✅ ${result.actions.length} novas ações identificadas!`);
+      setTimeout(() => setAnalysisMessage(""), 2000);
     }
 
     setIsAnalyzing(false);
@@ -503,7 +512,7 @@ export default function Home() {
           {isListening && (
             <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl">
               <p className="text-sm font-semibold text-blue-800 mb-2">
-                🔴 Gravando... (Diga "anotar na ata" para capturar)
+                🔴 Gravando... (Diga "anotar na ata" para capturar ação específica)
               </p>
               <p className="text-gray-700 italic">
                 {liveTranscript || "Aguardando fala..."}
@@ -561,7 +570,7 @@ export default function Home() {
               )}
               {suggestions.length === 0 && !analysisMessage ? (
                 <p className="text-center py-5 text-gray-500">
-                  As ações aparecerão aqui
+                  As ações aparecerão aqui (IA automática + comando de voz + manual)
                 </p>
               ) : (
                 <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-xl">
