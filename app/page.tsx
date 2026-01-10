@@ -165,23 +165,61 @@ export default function Home() {
     const reader = new FileReader();
 
     reader.onload = (event) => {
-      const text = event.target?.result as string;
+      let text = event.target?.result as string;
+      
+      // Corrigir encoding se necessário (detecta caracteres UTF-8 mal codificados)
+      if (text.includes('Ã§Ã£') || text.includes('SaÃ­das') || text.includes('ResponsÃ¡vel')) {
+        // Está com encoding errado, tentar recodificar
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder('utf-8');
+        try {
+          const bytes = encoder.encode(text);
+          text = decoder.decode(bytes);
+        } catch (err) {
+          console.log("Falha ao recodificar, continuando com texto original");
+        }
+      }
+      
       const lines = text.split(/\r?\n/).filter(line => line.trim());
 
       if (lines.length < 2) return;
 
       const actions: PreviousActionItem[] = [];
+      
+      // Detectar índice das colunas pelo header
+      const header = lines[0].toLowerCase();
+      let entradaIdx = 0;
+      let acaoIdx = 1;
+      let responsavelIdx = 2;
+      
+      // Tentar detectar as colunas corretas
+      const headerCols = lines[0].split(/\t|,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+      headerCols.forEach((col, idx) => {
+        const cleanCol = col.replace(/"/g, "").toLowerCase().trim();
+        if (cleanCol.includes('entrada')) entradaIdx = idx;
+        if (cleanCol.includes('saída') || cleanCol.includes('saida') || cleanCol.includes('ação') || cleanCol.includes('acao') || cleanCol.includes('decisão')) acaoIdx = idx;
+        if (cleanCol.includes('responsável') || cleanCol.includes('responsavel')) responsavelIdx = idx;
+      });
 
       lines.slice(1).forEach((line) => {
+        // Suportar tanto vírgula quanto tab como separador
         const cols = line
-          .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+          .split(/\t|,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
           .map(c => c.replace(/"/g, "").trim());
 
-        const entrada = cols[0];
-        const actionText = cols[1];
-        const responsavel = cols[2] || "Não definido";
+        if (cols.length < 3) return; // Linha inválida
 
-        if (entrada === "Ação" && actionText) {
+        const entrada = cols[entradaIdx] || "";
+        const actionText = cols[acaoIdx] || "";
+        const responsavel = cols[responsavelIdx] || "Não definido";
+
+        // Aceita "Ação" ou variações (AÃ§Ã£o, acao, etc)
+        const isAction = entrada.toLowerCase().includes('acao') || 
+                        entrada.toLowerCase().includes('ação') || 
+                        entrada === 'Ação' ||
+                        entrada.includes('Ã§Ã£o');
+
+        if (isAction && actionText && actionText.length > 3) {
           actions.push({
             action: actionText,
             responsavel,
@@ -190,8 +228,13 @@ export default function Home() {
       });
 
       setPreviousActions(actions);
+      
+      if (actions.length === 0) {
+        alert("Nenhuma ação encontrada no CSV. Verifique o formato do arquivo.");
+      }
     };
 
+    // Tentar múltiplos encodings
     reader.readAsText(file, "UTF-8");
   };
 
