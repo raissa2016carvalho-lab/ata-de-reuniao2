@@ -5,7 +5,7 @@ import Image from "next/image";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
-  "Ceará ",
+  "Ceará",
   "Bahia",
   "Piauí",
   "Rio Grande do Norte",
@@ -19,7 +19,7 @@ interface ChecklistItem {
   text: string;
   area: string;
   done: boolean;
-  time?: string; // Tempo final salvo
+  time?: string;
 }
 
 interface PreviousActionItem {
@@ -31,60 +31,144 @@ export default function Home() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedAreas, setSelectedAreas] = useState<Record<number, string>>({});
-  const [selectedStatus, setSelectedStatus] = useState<Record<number, string>>({});
   const [transcript, setTranscript] = useState("");
   const [manualAction, setManualAction] = useState("");
   const [objective, setObjective] = useState("");
   const [previousActions, setPreviousActions] = useState<PreviousActionItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
+  
+  // Estados para o microfone
+  const [isListening, setIsListening] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [finalTranscript, setFinalTranscript] = useState("");
+  const recognitionRef = useRef<any>(null);
 
-  // Timers individuais para apresentações por estado
+  // Timers
   const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
   const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
-// Load CSV file (reunião anterior) - SOMENTE AÇÕES
-const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  // Inicializar Web Speech API
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "pt-BR";
 
-  const reader = new FileReader();
+        recognition.onresult = (event: any) => {
+          let interimTranscript = "";
+          let finalText = "";
 
-  reader.onload = (event) => {
-    const text = event.target?.result as string;
-    const lines = text.split(/\r?\n/).filter(line => line.trim());
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcriptPiece = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalText += transcriptPiece + " ";
+            } else {
+              interimTranscript += transcriptPiece;
+            }
+          }
 
-    if (lines.length < 2) return;
+          setLiveTranscript(interimTranscript);
+          
+          if (finalText) {
+            setFinalTranscript(prev => prev + finalText);
+            
+            // Detectar comando "anotar na ata"
+            const lowerText = finalText.toLowerCase();
+            if (lowerText.includes("anotar na ata") || lowerText.includes("anotar ata")) {
+              // Extrair texto antes do comando
+              const textBeforeCommand = finalText.split(/anotar na ata|anotar ata/i)[0].trim();
+              if (textBeforeCommand.length > 10) {
+                setSuggestions(prev => [...prev, textBeforeCommand]);
+              }
+            }
+          }
+        };
 
-    const actions: PreviousActionItem[] = [];
+        recognition.onerror = (event: any) => {
+          console.error("Erro no reconhecimento:", event.error);
+          setIsListening(false);
+        };
 
-    lines.slice(1).forEach((line) => {
-      const cols = line
-        .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
-        .map(c => c.replace(/"/g, "").trim());
+        recognition.onend = () => {
+          if (isListening) {
+            recognition.start();
+          }
+        };
 
-      const entrada = cols[0];           // Coluna "Entradas"
-      const actionText = cols[1];        // Coluna "Saídas: Decisões e ações"
-      const responsavel = cols[2] || "Não definido"; // Coluna "Responsável"
-      // cols[3] = Data (não usamos aqui)
-      // cols[4] = Status (não usamos aqui)
-      // cols[5] = Tempo (não usamos aqui)
-
-      // ✅ REGRA ÚNICA E CORRETA
-      if (entrada === "Ação" && actionText) {
-        actions.push({
-          action: actionText,
-          responsavel,
-        });
+        recognitionRef.current = recognition;
       }
-    });
+    }
 
-    setPreviousActions(actions);
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, [isListening]);
+
+  // Toggle microfone
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert("Seu navegador não suporta reconhecimento de voz. Use Chrome ou Edge.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      // Adicionar transcrição final ao campo
+      setTranscript(prev => prev + "\n\n" + finalTranscript);
+      setFinalTranscript("");
+      setLiveTranscript("");
+    } else {
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
   };
 
-  reader.readAsText(file, "UTF-8");
-};
-  // Analyze with AI
+  // Load CSV file com UTF-8 correto
+  const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+
+      if (lines.length < 2) return;
+
+      const actions: PreviousActionItem[] = [];
+
+      lines.slice(1).forEach((line) => {
+        const cols = line
+          .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+          .map(c => c.replace(/"/g, "").trim());
+
+        const entrada = cols[0];
+        const actionText = cols[1];
+        const responsavel = cols[2] || "Não definido";
+
+        if (entrada === "Ação" && actionText) {
+          actions.push({
+            action: actionText,
+            responsavel,
+          });
+        }
+      });
+
+      setPreviousActions(actions);
+    };
+
+    reader.readAsText(file, "UTF-8");
+  };
+
   const handleAnalyze = async () => {
     if (!transcript.trim()) {
       alert("Cole a transcrição primeiro");
@@ -108,7 +192,6 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     setIsAnalyzing(false);
   };
 
-  // Add manual action
   const handleAddManualAction = () => {
     if (manualAction.trim()) {
       setSuggestions((prev) => [...prev, manualAction.trim()]);
@@ -116,11 +199,9 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   };
 
-  // Approve action
   const handleApprove = (index: number) => {
     const action = suggestions[index];
     const area = selectedAreas[index] || STATES[0];
-    const status = selectedStatus[index] || "Concluído";
 
     setChecklist((prev) => [
       ...prev,
@@ -128,7 +209,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
         type: "Ação",
         text: action,
         area,
-        done: status === "Concluído",
+        done: true,
       },
     ]);
 
@@ -138,14 +219,8 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
       delete newAreas[index];
       return newAreas;
     });
-    setSelectedStatus((prev) => {
-      const newStatus = { ...prev };
-      delete newStatus[index];
-      return newStatus;
-    });
   };
 
-  // Botão PARAR para estado específico
   const handleStopTimer = (state: string) => {
     const itemKey = state;
     if (individualTimers[itemKey]) {
@@ -154,7 +229,6 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
       delete newTimers[itemKey];
       setIndividualTimers(newTimers);
       
-      // Salva tempo final no checklist
       const finalTime = formatItemTime(state);
       setChecklist(prev => 
         prev.map(item => 
@@ -166,12 +240,10 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   };
 
-  // Toggle state checkbox com timer automático
   const handleToggleState = (state: string, checked: boolean) => {
     const itemKey = state;
     
     if (checked) {
-      // Inicia timer individual para este estado
       const timerId = setInterval(() => {
         setPresentationTimes(prev => ({
           ...prev,
@@ -182,7 +254,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
       setIndividualTimers(prev => ({ ...prev, [itemKey]: timerId }));
       
       setChecklist((prev) => [
-        ...prev.filter(c => !(c.type === "Apresentação" && c.text === state)), // Remove se existir
+        ...prev.filter(c => !(c.type === "Apresentação" && c.text === state)),
         {
           type: "Apresentação",
           text: state,
@@ -191,13 +263,12 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
         },
       ]);
     } else {
-      handleStopTimer(state); // Para timer ao desmarcar
+      handleStopTimer(state);
       
       setChecklist((prev) =>
         prev.filter((c) => !(c.type === "Apresentação" && c.text === state))
       );
       
-      // Limpa tempo em execução
       setPresentationTimes(prev => {
         const newTimes = { ...prev };
         delete newTimes[itemKey];
@@ -206,7 +277,6 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   };
 
-  // Formatar tempo individual
   const formatItemTime = (state: string) => {
     const totalSeconds = presentationTimes[state] || 0;
     const mins = Math.floor(totalSeconds / 60);
@@ -214,23 +284,20 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
-  // Toggle checklist item
   const handleToggleChecklistItem = (index: number, checked: boolean) => {
     setChecklist((prev) =>
       prev.map((item, i) => (i === index ? { ...item, done: checked } : item))
     );
   };
 
-  // Download Excel/CSV - APENAS AÇÕES
+  // Download com UTF-8 BOM para Excel
   const handleDownload = () => {
-    // Filtra APENAS itens do tipo "Ação"
+    const presentationItems = checklist.filter((c) => c.type === "Apresentação");
     const actionItems = checklist.filter((c) => c.type === "Ação");
-    const completedActionItems = actionItems.filter((c) => c.done);
-    const pendingActionItems = actionItems.filter((c) => !c.done);
-    const allActionItems = [...completedActionItems, ...pendingActionItems];
+    const allItems = [...presentationItems, ...actionItems];
 
-    if (allActionItems.length === 0) {
-      alert("Marque pelo menos uma ação antes de exportar");
+    if (allItems.length === 0) {
+      alert("Adicione pelo menos uma apresentação ou ação antes de exportar");
       return;
     }
 
@@ -240,15 +307,18 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
 
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
-    let csv = '"Saídas: Decisões e ações",Responsável,Data,Status\n';
+    // Header com UTF-8 BOM
+    let csv = '\ufeff"Entradas","Saídas: Decisões e ações","Responsável","Data","Status","Tempo"\n';
 
-    allActionItems.forEach((c) => {
+    allItems.forEach((c) => {
+      const entrada = c.type;
       const saidas = c.text;
       const responsavel = c.area;
       const data = formatDate(dueDate);
       const status = c.done ? "Concluído" : "Pendente";
+      const tempo = c.time || "";
 
-      csv += `"${saidas}","${responsavel}","${data}","${status}"\n`;
+      csv += `"${entrada}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -264,7 +334,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
   return (
     <div className="p-5 md:p-8">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header com logo */}
+        {/* Header */}
         <div className="bg-gradient-to-r from-[#1e3c72] to-[#2a5298] text-white py-6 px-8">
           <div className="flex items-center justify-between">
             <div className="text-left">
@@ -308,39 +378,24 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                        #
-                      </th>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                        Ação da reunião anterior
-                      </th>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                        Responsável
-                      </th>
-                      <th className="px-3 py-2 text-center font-semibold text-gray-700">
-                        Status
-                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">#</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Ação da reunião anterior</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Responsável</th>
+                      <th className="px-3 py-2 text-center font-semibold text-gray-700">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {previousActions.map((item, i) => (
                       <tr key={i} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-600 align-top">
-                          {i + 1}
-                        </td>
-                        <td className="px-3 py-2 text-gray-800 align-top">
-                          {item.action}
-                        </td>
+                        <td className="px-3 py-2 text-gray-600 align-top">{i + 1}</td>
+                        <td className="px-3 py-2 text-gray-800 align-top">{item.action}</td>
                         <td className="px-3 py-2 text-gray-700 align-top">
                           <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                             {item.responsavel}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-center align-top">
-                          <select
-                            className="px-2 py-1 border-2 border-gray-200 rounded-lg text-xs focus:outline-none focus:border-emerald-500"
-                            defaultValue="Pendente"
-                          >
+                          <select className="px-2 py-1 border-2 border-gray-200 rounded-lg text-xs focus:outline-none focus:border-emerald-500" defaultValue="Pendente">
                             <option value="Pendente">Pendente</option>
                             <option value="Concluído">OK</option>
                           </select>
@@ -354,10 +409,10 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         </section>
 
-        {/* Apresentação dos Números - COM TIMER AUTOMÁTICO + BOTÃO PARAR */}
+        {/* Apresentação dos Números */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Apresentação dos Números de Segurança (Meta de Inspeção, Eventos Ocorridos, Taxa de Frequencia e Gravidade, Tipologia, Inspeões Cruzadas)
+            Apresentação dos Números de Segurança
           </h3>
           <div className="space-y-3">
             {STATES.map((state) => {
@@ -400,17 +455,42 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         </section>
 
-        {/* Transcrição / ações atuais */}
+        {/* Transcrição COM MICROFONE */}
         <section className="p-8 border-b border-gray-200">
-          <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Transcrição da Reunião
-          </h3>
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-xl font-bold text-gray-800">
+              Transcrição da Reunião
+            </h3>
+            <button
+              onClick={toggleListening}
+              className={`px-6 py-3 rounded-xl font-semibold transition-all shadow-lg ${
+                isListening
+                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                  : "bg-blue-500 hover:bg-blue-600 text-white"
+              }`}
+            >
+              {isListening ? "🎤 Parar Gravação" : "🎤 Iniciar Gravação"}
+            </button>
+          </div>
+
+          {/* Transcrição ao vivo */}
+          {isListening && (
+            <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl">
+              <p className="text-sm font-semibold text-blue-800 mb-2">
+                🔴 Gravando... (Diga "anotar na ata" para capturar)
+              </p>
+              <p className="text-gray-700 italic">
+                {liveTranscript || "Aguardando fala..."}
+              </p>
+            </div>
+          )}
+
           <div className="grid md:grid-cols-2 gap-8">
             <div>
               <textarea
                 value={transcript}
                 onChange={(e) => setTranscript(e.target.value)}
-                placeholder="Cole a transcrição completa da reunião aqui..."
+                placeholder="Cole a transcrição ou use o microfone..."
                 className="w-full h-44 p-4 border-2 border-gray-200 rounded-xl resize-y focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
 
@@ -418,15 +498,15 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                 <button
                   onClick={handleAnalyze}
                   disabled={isAnalyzing}
-                  className="flex-1 py-4 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
+                  className="flex-1 py-4 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isAnalyzing ? "Analisando com IA..." : "Analisar com IA"}
+                  {isAnalyzing ? "Analisando..." : "Analisar com IA"}
                 </button>
 
                 <button
                   onClick={handleAddManualAction}
-                  disabled={!manualAction.trim() || isAnalyzing}
-                  className="px-6 py-4 bg-purple-600 text-white font-semibold rounded-xl hover:bg-purple-700 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
+                  disabled={!manualAction.trim()}
+                  className="px-6 py-4 bg-purple-600 text-white font-semibold rounded-xl hover:bg-purple-700 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   ➕ Manual
                 </button>
@@ -441,7 +521,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                     handleAddManualAction();
                   }
                 }}
-                placeholder="Digite ação manual + Enter ou botão ➕"
+                placeholder="Digite ação manual + Enter"
                 className="w-full mt-3 p-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
               />
             </div>
@@ -451,42 +531,28 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                 Ações identificadas ({suggestions.length})
               </h4>
               {analysisMessage && (
-                <p className="text-center py-5 text-gray-500 mb-4">
-                  {analysisMessage}
-                </p>
+                <p className="text-center py-5 text-gray-500 mb-4">{analysisMessage}</p>
               )}
               {suggestions.length === 0 && !analysisMessage ? (
                 <p className="text-center py-5 text-gray-500">
-                  As ações aparecerão aqui (IA + Manual)
+                  As ações aparecerão aqui
                 </p>
               ) : (
                 <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-xl">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-100 sticky top-0">
                       <tr>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                          #
-                        </th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                          Ação
-                        </th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                          Responsável
-                        </th>
-                        <th className="px-3 py-2 text-center font-semibold text-gray-700">
-                          Aprovar
-                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">#</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Ação</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Responsável</th>
+                        <th className="px-3 py-2 text-center font-semibold text-gray-700">Aprovar</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {suggestions.map((suggestion, i) => (
                         <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-gray-600 align-top">
-                            {i + 1}
-                          </td>
-                          <td className="px-3 py-2 text-gray-800 align-top text-xs">
-                            {suggestion}
-                          </td>
+                          <td className="px-3 py-2 text-gray-600 align-top">{i + 1}</td>
+                          <td className="px-3 py-2 text-gray-800 align-top text-xs">{suggestion}</td>
                           <td className="px-3 py-2 align-top">
                             <select
                               value={selectedAreas[i] || STATES[0]}
@@ -499,9 +565,7 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
                               className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
                             >
                               {STATES.map((state) => (
-                                <option key={state} value={state}>
-                                  {state}
-                                </option>
+                                <option key={state} value={state}>{state}</option>
                               ))}
                             </select>
                           </td>
@@ -523,125 +587,46 @@ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         </section>
 
-        {/* Objetivo */}
-        <section className="p-8 border-b border-gray-200">
-          <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Objetivo da Reunião
-          </h3>
-          <input
-            type="text"
-            value={objective}
-            onChange={(e) => setObjective(e.target.value)}
-            placeholder="Descreva o objetivo principal desta reunião"
-            className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-          />
-        </section>
-
-        {/* Ações Pendentes */}
-        {pendingItems.length > 0 && (
-          <section className="p-8 border-b border-gray-200 bg-yellow-50">
-            <h3 className="text-xl font-bold text-gray-800 mb-5">
-              ⏳ Ações Pendentes ({pendingItems.length})
-            </h3>
-            <div className="border border-yellow-300 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-yellow-100">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                      Ação
-                    </th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                      Responsável
-                    </th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700">
-                      Marcar Concluído
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-yellow-200">
-                  {pendingItems.map((item, i) => (
-                    <tr key={i} className="hover:bg-yellow-100">
-                      <td className="px-3 py-2 text-gray-800">{item.text}</td>
-                      <td className="px-3 py-2 text-gray-700">
-                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                          {item.area}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <button
-                          onClick={() => {
-                            const itemIndex = checklist.findIndex(
-                              (c) => c.text === item.text && !c.done
-                            );
-                            if (itemIndex !== -1) {
-                              handleToggleChecklistItem(itemIndex, true);
-                            }
-                          }}
-                          className="px-3 py-1 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-all"
-                        >
-                          ✅ Concluído
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        {/* Checklist Final - Apenas Ações Concluídas */}
+        {/* Checklist Final */}
         <section className="p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Checklist Final do Relatório ({checklist.filter(c => c.type === "Ação" && c.done).length} ações)
+            Checklist Final ({checklist.length} itens)
           </h3>
-          {checklist.filter(c => c.type === "Ação" && c.done).length === 0 ? (
-            <p className="text-center py-5 text-gray-500">
-              Nenhuma ação concluída
-            </p>
+          {checklist.length === 0 ? (
+            <p className="text-center py-5 text-gray-500">Nenhum item no checklist</p>
           ) : (
             <div className="space-y-3 mb-5">
-              {checklist
-                .filter(c => c.type === "Ação" && c.done)
-                .map((item, i) => (
-                <div
-                  key={i}
-                  className="bg-gray-50 p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm hover:shadow-md transition-all"
-                >
-                  <label className="flex items-center gap-3 cursor-pointer">
+              {checklist.map((item, i) => (
+                <div key={i} className="bg-gray-50 p-4 border-l-4 border-emerald-500 rounded-xl shadow-sm">
+                  <div className="flex items-center gap-3">
                     <input
                       type="checkbox"
                       checked={item.done}
-                      onChange={(e) => {
-                        const itemIndex = checklist.findIndex(
-                          (c) => c.text === item.text
-                        );
-                        if (itemIndex !== -1) {
-                          handleToggleChecklistItem(
-                            itemIndex,
-                            e.target.checked
-                          );
-                        }
-                      }}
+                      onChange={(e) => handleToggleChecklistItem(i, e.target.checked)}
                       className="w-5 h-5 accent-emerald-500"
                     />
                     <span className="flex-1">
-                      <strong>Ação:</strong> {item.text}
+                      <strong>{item.type}:</strong> {item.text}
                       <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                         {item.area}
                       </span>
+                      {item.time && (
+                        <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full font-mono">
+                          {item.time}
+                        </span>
+                      )}
                     </span>
-                  </label>
+                  </div>
                 </div>
               ))}
             </div>
           )}
           <button
             onClick={handleDownload}
-            disabled={checklist.filter(c => c.type === "Ação").length === 0}
-            className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            disabled={checklist.length === 0}
+            className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            📥 Baixar Relatório ({checklist.filter(c => c.type === "Ação").length} ações)
+            📥 Baixar Relatório ({checklist.length} itens)
           </button>
         </section>
       </div>
