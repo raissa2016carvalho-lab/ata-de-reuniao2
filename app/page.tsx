@@ -41,7 +41,6 @@ export default function Home() {
   // Estados para o microfone
   const [isListening, setIsListening] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
-  const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
 
   // Timers
@@ -75,12 +74,24 @@ export default function Home() {
           setLiveTranscript(interimTranscript);
           
           if (finalText) {
-            setFinalTranscript(prev => prev + finalText);
+            // Adiciona à transcrição completa que fica visível
+            setTranscript(prev => {
+              const newTranscript = prev + finalText;
+              // Analisa automaticamente com IA a cada 5 segundos de texto acumulado
+              if (newTranscript.length % 500 < finalText.length) {
+                analyzeTranscriptAuto(newTranscript);
+              }
+              return newTranscript;
+            });
             
-            // Detectar comando "anotar na ata" e adicionar como ação direta
+            // Detectar comando "anotar na ata"
             const lowerText = finalText.toLowerCase();
             if (lowerText.includes("anotar na ata") || lowerText.includes("anotar ata")) {
-              setSuggestions(prev => [...prev, finalText.trim()]);
+              // Extrair texto antes do comando
+              const textBeforeCommand = finalText.split(/anotar na ata|anotar ata/i)[0].trim();
+              if (textBeforeCommand.length > 5) {
+                setSuggestions(prev => [...prev, textBeforeCommand]);
+              }
             }
           }
         };
@@ -117,13 +128,32 @@ export default function Home() {
     if (isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
-      // Adicionar transcrição final ao campo
-      setTranscript(prev => prev + "\n\n" + finalTranscript);
-      setFinalTranscript("");
       setLiveTranscript("");
     } else {
       recognitionRef.current.start();
       setIsListening(true);
+    }
+  };
+
+  // Análise automática da transcrição com IA (sem bloquear a interface)
+  const analyzeTranscriptAuto = async (text: string) => {
+    if (!text.trim() || text.length < 50) return;
+
+    try {
+      const result = await analyzeTranscript(text);
+      
+      if (!result.error && result.actions.length > 0) {
+        // Adiciona apenas ações novas (evita duplicatas)
+        setSuggestions(prev => {
+          const existingActions = new Set(prev.map(a => a.toLowerCase()));
+          const newActions = result.actions.filter(
+            action => !existingActions.has(action.toLowerCase())
+          );
+          return [...prev, ...newActions];
+        });
+      }
+    } catch (error) {
+      console.error("Erro na análise automática:", error);
     }
   };
 
