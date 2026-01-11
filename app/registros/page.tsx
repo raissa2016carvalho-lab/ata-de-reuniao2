@@ -179,14 +179,14 @@ export default function RegistrosPage() {
                           </button>
                           <button
                             onClick={() => {
-                              const meeting = meetings.find(m => m.id === meeting.id);
-                              if (meeting?.csvData) {
+                              const currentMeeting = meetings.find(m => m.id === meeting.id);
+                              if (currentMeeting?.csvData) {
                                 // Baixar CSV salvo
-                                const blob = new Blob([meeting.csvData], { type: "text/csv;charset=utf-8;" });
+                                const blob = new Blob([currentMeeting.csvData], { type: "text/csv;charset=utf-8;" });
                                 const url = URL.createObjectURL(blob);
                                 const a = document.createElement("a");
                                 a.href = url;
-                                a.download = `RELATORIO_${meeting.date.replace(/\//g, "-")}.csv`;
+                                a.download = `RELATORIO_${currentMeeting.date.replace(/\//g, "-")}.csv`;
                                 a.click();
                                 URL.revokeObjectURL(url);
                               } else {
