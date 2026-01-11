@@ -9,6 +9,7 @@ interface Meeting {
   actions: number;
   completed: number;
   pending: number;
+  csvData?: string; // CSV completo salvo
 }
 
 export default function RegistrosPage() {
@@ -20,26 +21,6 @@ export default function RegistrosPage() {
     const savedMeetings = localStorage.getItem("meetings");
     if (savedMeetings) {
       setMeetings(JSON.parse(savedMeetings));
-    } else {
-      // Dados de exemplo para demonstração
-      setMeetings([
-        {
-          id: "2026-01-10",
-          date: "10/01/2026",
-          presentations: 7,
-          actions: 6,
-          completed: 6,
-          pending: 0,
-        },
-        {
-          id: "2026-01-03",
-          date: "03/01/2026",
-          presentations: 7,
-          actions: 8,
-          completed: 5,
-          pending: 3,
-        },
-      ]);
     }
   }, []);
 
@@ -198,10 +179,19 @@ export default function RegistrosPage() {
                           </button>
                           <button
                             onClick={() => {
-                              const link = document.createElement("a");
-                              link.href = `/relatorios/${meeting.id}.csv`;
-                              link.download = `RELATORIO_${meeting.date.replace(/\//g, "-")}.csv`;
-                              link.click();
+                              const meeting = meetings.find(m => m.id === meeting.id);
+                              if (meeting?.csvData) {
+                                // Baixar CSV salvo
+                                const blob = new Blob([meeting.csvData], { type: "text/csv;charset=utf-8;" });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = `RELATORIO_${meeting.date.replace(/\//g, "-")}.csv`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              } else {
+                                alert("CSV não encontrado para esta reunião");
+                              }
                             }}
                             className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-all"
                           >
