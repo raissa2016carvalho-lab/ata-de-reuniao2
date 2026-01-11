@@ -4,13 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
-  "Ceará",
-  "Bahia",
-  "Piauí",
-  "Rio Grande do Norte",
-  "Minas Gerais",
-  "São Paulo",
-  "Monitoria",
+  "SESMT - Metropolitana",
+  "SESMT - Norte e Atlantico",
+  "SESMT -Bahia",
+  "SESMT -Piauí",
+  "SESMT -Rio Grande do Norte",
+  "SESMT -Minas Gerais",
+  "SESMT -São Paulo",
+  "SESMT -Monitoria",
 ];
 
 interface ChecklistItem {
@@ -497,7 +498,8 @@ export default function Home() {
         {/* Apresentação dos Números */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Apresentação dos Números de Segurança
+            Apresentação dos Números de Segurança - ( KPI's; Metas de inspeção em campo; Eventos ocorridos; inspeções cruzadas )
+            
           </h3>
           <div className="space-y-3">
             {STATES.map((state) => {
