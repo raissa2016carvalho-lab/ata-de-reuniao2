@@ -427,7 +427,13 @@ export default function Home() {
                 Há 38 anos, unindo energias para ir mais longe!
               </p>
             </div>
-            <div className="hidden md:block">
+            <div className="hidden md:flex items-center gap-4">
+              <a
+                href="/registros"
+                className="px-6 py-3 bg-white text-[#1e3c72] font-semibold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+              >
+                📋 Registros Gerais
+              </a>
               <img
                 src="/LogoBeqbranca.png"
                 alt="Logo Beq"
@@ -499,7 +505,6 @@ export default function Home() {
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Apresentação dos Números de Segurança - ( KPI's; Metas de inspeção em campo; Eventos ocorridos; inspeções cruzadas )
-            
           </h3>
           <div className="space-y-3">
             {STATES.map((state) => {
