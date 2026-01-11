@@ -4,14 +4,13 @@ import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
-  "SESMT - Metropolitana",
-  "SESMT - Norte e Atlantico",
-  "SESMT -Bahia",
-  "SESMT -Piauí",
-  "SESMT -Rio Grande do Norte",
-  "SESMT -Minas Gerais",
-  "SESMT -São Paulo",
-  "SESMT -Monitoria",
+  "SESMT - Ceará",
+  "SESMT - Bahia",
+  "SESMT - Piauí",
+  "SESMT - Rio Grande do Norte",
+  "SESMT - Minas Gerais",
+  "SESMT - São Paulo",
+  "SESMT - Monitoria",
 ];
 
 interface ChecklistItem {
@@ -372,7 +371,7 @@ export default function Home() {
     );
   };
 
-  // Download com UTF-8 BOM para Excel
+  // Download com UTF-8 BOM para Excel E SALVAR NO HISTÓRICO
   const handleDownload = () => {
     const presentationItems = checklist.filter((c) => c.type === "Apresentação");
     const actionItems = checklist.filter((c) => c.type === "Ação");
@@ -388,6 +387,12 @@ export default function Home() {
     dueDate.setDate(dueDate.getDate() + 8);
 
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
+    const formatDateBR = (d: Date) => {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
 
     // Header com UTF-8 BOM
     let csv = '\ufeff"Entradas","Saídas: Decisões e ações","Responsável","Data","Status","Tempo"\n';
@@ -408,6 +413,41 @@ export default function Home() {
     a.href = URL.createObjectURL(blob);
     a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
     a.click();
+
+    // SALVAR NO HISTÓRICO (localStorage)
+    const completedActions = actionItems.filter(c => c.done).length;
+    const pendingActions = actionItems.filter(c => !c.done).length;
+
+    const newMeeting = {
+      id: formatDate(today),
+      date: formatDateBR(today),
+      presentations: presentationItems.length,
+      actions: actionItems.length,
+      completed: completedActions,
+      pending: pendingActions,
+      csvData: csv, // Salva o CSV completo
+    };
+
+    // Carregar reuniões existentes
+    const savedMeetings = localStorage.getItem("meetings");
+    const meetings = savedMeetings ? JSON.parse(savedMeetings) : [];
+
+    // Verificar se já existe reunião com a mesma data
+    const existingIndex = meetings.findIndex((m: any) => m.id === newMeeting.id);
+    
+    if (existingIndex >= 0) {
+      // Atualizar reunião existente
+      meetings[existingIndex] = newMeeting;
+    } else {
+      // Adicionar nova reunião
+      meetings.unshift(newMeeting); // Adiciona no início
+    }
+
+    // Salvar no localStorage
+    localStorage.setItem("meetings", JSON.stringify(meetings));
+
+    // Feedback visual
+    alert("✅ Reunião salva com sucesso!\n\nAcesse 'Registros Gerais' para ver o histórico.");
   };
 
   const completedItems = checklist.filter((c) => c.done);
@@ -504,7 +544,7 @@ export default function Home() {
         {/* Apresentação dos Números */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-            Apresentação dos Números de Segurança - ( KPI's; Metas de inspeção em campo; Eventos ocorridos; inspeções cruzadas )
+          Apresentação dos Números de Segurança - ( KPI's; Metas de inspeção em campo; Eventos ocorridos; inspeções cruzadas )
           </h3>
           <div className="space-y-3">
             {STATES.map((state) => {
