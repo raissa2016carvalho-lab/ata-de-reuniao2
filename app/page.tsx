@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Image from "next/image";
 import { analyzeTranscript } from "./actions";
 
 const STATES = [
@@ -428,7 +427,7 @@ export default function Home() {
               </p>
             </div>
             <div className="hidden md:block">
-              <Image
+              <img
                 src="/LogoBeqbranca.jpg"
                 alt="Logo Beq"
                 width={140}
