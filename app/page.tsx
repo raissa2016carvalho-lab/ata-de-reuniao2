@@ -428,11 +428,15 @@ export default function Home() {
             </div>
             <div className="hidden md:block">
               <img
-                src="/LogoBeqbranca.jpg"
+                src="/LogoBeqbranca.png"
                 alt="Logo Beq"
                 width={140}
                 height={40}
                 className="object-contain"
+                onError={(e) => {
+                  console.error("Erro ao carregar logo:", e);
+                  e.currentTarget.style.display = 'none';
+                }}
               />
             </div>
           </div>
