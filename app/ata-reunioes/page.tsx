@@ -66,6 +66,11 @@ export default function AtaReunioes() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
   
+  // Estados para pauta da reunião
+  const [showPauta, setShowPauta] = useState(false);
+  const [assunto, setAssunto] = useState("");
+  const [objetivo, setObjetivo] = useState("");
+  
   // Estados para o microfone
   const [isListening, setIsListening] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
@@ -317,8 +322,27 @@ export default function AtaReunioes() {
 
     const today = new Date();
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
+    const formatDateTimeBR = (d: Date) => {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      return `${day}/${month}/${year} às ${hours}:${minutes}`;
+    };
 
-    let csv = '\ufeff"Ação","Responsável","Data","Status"\n';
+    let csv = '\ufeff';
+    
+    // Cabeçalho da Ata com Pauta
+    if (assunto || objetivo) {
+      csv += `"=== ATA DE REUNIÃO ==="\n`;
+      csv += `"Data: ${formatDateTimeBR(today)}"\n`;
+      if (assunto) csv += `"Assunto: ${assunto}"\n`;
+      if (objetivo) csv += `"Objetivo: ${objetivo}"\n`;
+      csv += `\n`;
+    }
+    
+    csv += '"Ação","Responsável","Data","Status"\n';
 
     checklist.forEach((c) => {
       const status = c.done ? "Concluído" : "Pendente";
