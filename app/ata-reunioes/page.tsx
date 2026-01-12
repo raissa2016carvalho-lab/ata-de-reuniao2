@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "../actions";
 
-const STATES = [
+const DEFAULT_AREAS = [
   "SESMT - Ceará",
   "SESMT - Bahia",
   "SESMT - Piauí",
@@ -56,6 +56,12 @@ interface PreviousActionItem {
   responsavel: string;
 }
 
+interface Participant {
+  id: string;
+  name: string;
+  area: string;
+}
+
 export default function AtaReunioes() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -66,6 +72,12 @@ export default function AtaReunioes() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
   
+  // Estados para participantes
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [showParticipants, setShowParticipants] = useState(false);
+  const [newParticipantName, setNewParticipantName] = useState("");
+  const [newParticipantArea, setNewParticipantArea] = useState(DEFAULT_AREAS[0]);
+  
   // Estados para pauta da reunião
   const [showPauta, setShowPauta] = useState(false);
   const [objetivo, setObjetivo] = useState("");
@@ -75,6 +87,12 @@ export default function AtaReunioes() {
   const [isListening, setIsListening] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
+
+  // Gerar lista de responsáveis disponíveis (participantes + áreas padrão)
+  const availableResponsibles = [
+    ...participants.map(p => `${p.name} (${p.area})`),
+    ...DEFAULT_AREAS
+  ];
 
   // Inicializar Web Speech API
   useEffect(() => {
@@ -103,24 +121,18 @@ export default function AtaReunioes() {
           setLiveTranscript(interimTranscript);
           
           if (finalText) {
-            // Adiciona à transcrição completa
             setTranscript(prev => prev + finalText);
             
-            // DETECTAR QUALQUER COMANDO DE VOZ
             const lowerText = finalText.toLowerCase();
             const commandFound = VOICE_COMMANDS.find(cmd => lowerText.includes(cmd));
             
             if (commandFound) {
-              // Extrair texto ANTES do comando
               const regex = new RegExp(commandFound, "i");
               const parts = finalText.split(regex);
               const textBeforeCommand = parts[0].trim();
               
               if (textBeforeCommand.length > 5) {
-                // Adiciona SOMENTE quando houver comando
                 setSuggestions(prev => [...prev, textBeforeCommand]);
-                
-                // Feedback visual/sonoro (opcional)
                 console.log(`✅ Ação capturada pelo comando: "${commandFound}"`);
               }
             }
@@ -165,6 +177,28 @@ export default function AtaReunioes() {
     }
   };
 
+  // Funções para gerenciar participantes
+  const handleAddParticipant = () => {
+    if (!newParticipantName.trim()) {
+      alert("Digite o nome do participante");
+      return;
+    }
+
+    const newParticipant: Participant = {
+      id: Date.now().toString(),
+      name: newParticipantName.trim(),
+      area: newParticipantArea,
+    };
+
+    setParticipants([...participants, newParticipant]);
+    setNewParticipantName("");
+    setNewParticipantArea(DEFAULT_AREAS[0]);
+  };
+
+  const handleRemoveParticipant = (id: string) => {
+    setParticipants(participants.filter(p => p.id !== id));
+  };
+
   // Load CSV file com UTF-8 correto
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -175,7 +209,6 @@ export default function AtaReunioes() {
     reader.onload = (event) => {
       let text = event.target?.result as string;
       
-      // Corrigir encoding se necessário
       if (text.includes('Ã§Ã£') || text.includes('SaÃ­das') || text.includes('ResponsÃ¡vel')) {
         const encoder = new TextEncoder();
         const decoder = new TextDecoder('utf-8');
@@ -193,7 +226,6 @@ export default function AtaReunioes() {
 
       const actions: PreviousActionItem[] = [];
       
-      // Detectar índice das colunas pelo header
       let entradaIdx = 0;
       let acaoIdx = 1;
       let responsavelIdx = 2;
@@ -217,7 +249,6 @@ export default function AtaReunioes() {
         const actionText = cols[acaoIdx] || "";
         const responsavel = cols[responsavelIdx] || "Não definido";
 
-        // Aceita APENAS "Ação" (ignora "Apresentação")
         const isAction = entrada.toLowerCase().includes('acao') || 
                         entrada.toLowerCase().includes('ação') || 
                         entrada === 'Ação' ||
@@ -242,12 +273,6 @@ export default function AtaReunioes() {
     };
 
     reader.readAsText(file, "UTF-8");
-  };
-
-  const analyzeTranscriptAuto = async (text: string) => {
-    // FUNÇÃO DESATIVADA - Não analisa automaticamente mais
-    // Agora só captura com comandos de voz específicos
-    return;
   };
 
   const handleAnalyze = async () => {
@@ -289,7 +314,7 @@ export default function AtaReunioes() {
 
   const handleApprove = (index: number) => {
     const action = suggestions[index];
-    const area = selectedAreas[index] || STATES[0];
+    const area = selectedAreas[index] || availableResponsibles[0];
 
     setChecklist((prev) => [
       ...prev,
@@ -333,9 +358,17 @@ export default function AtaReunioes() {
 
     let csv = '\ufeff';
     
-    // Cabeçalho da Ata
     csv += `"=== ATA DE REUNIÃO ==="\n`;
     csv += `"Data: ${formatDateTimeBR(today)}"\n\n`;
+    
+    // Participantes
+    if (participants.length > 0) {
+      csv += `"PARTICIPANTES:"\n`;
+      participants.forEach((p, i) => {
+        csv += `"${i + 1}. ${p.name} - ${p.area}"\n`;
+      });
+      csv += `\n`;
+    }
     
     // Objetivo
     if (objetivo) {
@@ -403,6 +436,16 @@ export default function AtaReunioes() {
             </div>
             <div className="flex items-center gap-4">
               <button
+                onClick={() => setShowParticipants(!showParticipants)}
+                className={`px-6 py-3 font-semibold rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 ${
+                  showParticipants 
+                    ? "bg-amber-500 text-white" 
+                    : "bg-white text-[#1e3c72]"
+                }`}
+              >
+                👥 {showParticipants ? "Ocultar" : "Participantes"} {participants.length > 0 && `(${participants.length})`}
+              </button>
+              <button
                 onClick={() => setShowPauta(!showPauta)}
                 className={`px-6 py-3 font-semibold rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 ${
                   showPauta 
@@ -426,6 +469,104 @@ export default function AtaReunioes() {
             </div>
           </div>
         </div>
+
+        {/* Seção de Participantes */}
+        {showParticipants && (
+          <section className="p-8 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-orange-50">
+            <div className="max-w-4xl mx-auto">
+              <div className="flex items-center gap-3 mb-6">
+                <span className="text-4xl">👥</span>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-800">Participantes da Reunião</h3>
+                  <p className="text-sm text-gray-600">Adicione os participantes que aparecerão como responsáveis pelas ações</p>
+                </div>
+              </div>
+
+              {/* Formulário de adicionar participante */}
+              <div className="bg-white rounded-xl p-6 shadow-md mb-6">
+                <div className="flex gap-4 items-end">
+                  <div className="flex-1">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      Nome do Participante
+                    </label>
+                    <input
+                      type="text"
+                      value={newParticipantName}
+                      onChange={(e) => setNewParticipantName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newParticipantName.trim()) {
+                          handleAddParticipant();
+                        }
+                      }}
+                      placeholder="Ex: João Silva"
+                      className="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      Área/Setor
+                    </label>
+                    <select
+                      value={newParticipantArea}
+                      onChange={(e) => setNewParticipantArea(e.target.value)}
+                      className="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+                    >
+                      {DEFAULT_AREAS.map((area) => (
+                        <option key={area} value={area}>{area}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    onClick={handleAddParticipant}
+                    className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg"
+                  >
+                    ➕ Adicionar
+                  </button>
+                </div>
+              </div>
+
+              {/* Lista de participantes */}
+              {participants.length > 0 && (
+                <div className="bg-white rounded-xl p-6 shadow-md">
+                  <h4 className="text-sm font-bold text-gray-700 mb-4">
+                    Participantes Cadastrados ({participants.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {participants.map((participant) => (
+                      <div
+                        key={participant.id}
+                        className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">👤</span>
+                          <div>
+                            <p className="font-semibold text-gray-800">{participant.name}</p>
+                            <p className="text-sm text-gray-600">{participant.area}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveParticipant(participant.id)}
+                          className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-semibold rounded-lg transition-all"
+                          title="Remover participante"
+                        >
+                          🗑️ Remover
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {participants.length === 0 && (
+                <div className="bg-white rounded-xl p-8 shadow-md text-center">
+                  <p className="text-gray-500">
+                    Nenhum participante cadastrado ainda. Adicione participantes para que apareçam como responsáveis nas ações.
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Pauta da Reunião (Condicional) */}
         {showPauta && (
@@ -657,7 +798,7 @@ export default function AtaReunioes() {
                           <td className="px-3 py-2 text-gray-800 align-top text-xs">{suggestion}</td>
                           <td className="px-3 py-2 align-top">
                             <select
-                              value={selectedAreas[i] || STATES[0]}
+                              value={selectedAreas[i] || availableResponsibles[0]}
                               onChange={(e) =>
                                 setSelectedAreas((prev) => ({
                                   ...prev,
@@ -666,9 +807,20 @@ export default function AtaReunioes() {
                               }
                               className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
                             >
-                              {STATES.map((state) => (
-                                <option key={state} value={state}>{state}</option>
-                              ))}
+                              {participants.length > 0 && (
+                                <optgroup label="👥 Participantes">
+                                  {participants.map((p) => (
+                                    <option key={p.id} value={`${p.name} (${p.area})`}>
+                                      {p.name} ({p.area})
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              <optgroup label="🏢 Áreas Padrão">
+                                {DEFAULT_AREAS.map((area) => (
+                                  <option key={area} value={area}>{area}</option>
+                                ))}
+                              </optgroup>
                             </select>
                           </td>
                           <td className="px-3 py-2 text-center align-top">
