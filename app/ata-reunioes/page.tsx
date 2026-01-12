@@ -13,10 +13,47 @@ const STATES = [
   "SESMT - Monitoria",
 ];
 
+// Comandos de voz para capturar ações - LISTA COMPLETA
+const VOICE_COMMANDS = [
+  "anotar na ata",
+  "anotar ata",
+  "escrever na ata",
+  "escreva na ata",
+  "anote aí",
+  "anota aí",
+  "registrar na ata",
+  "registre na ata",
+  "adicionar na ata",
+  "adicione na ata",
+  "incluir na ata",
+  "inclua na ata",
+  "salvar na ata",
+  "salve na ata",
+  "gravar na ata",
+  "grave na ata",
+  "colocar na ata",
+  "coloque na ata",
+  "inserir na ata",
+  "insira na ata",
+  "ação para ata",
+  "item para ata",
+  "ponto de ata",
+  "vai para ata",
+  "isso é ata",
+  "é ação",
+  "criar ação",
+  "nova ação",
+];
+
 interface ChecklistItem {
   text: string;
   area: string;
   done: boolean;
+}
+
+interface PreviousActionItem {
+  action: string;
+  responsavel: string;
 }
 
 export default function AtaReunioes() {
@@ -25,6 +62,7 @@ export default function AtaReunioes() {
   const [selectedAreas, setSelectedAreas] = useState<Record<number, string>>({});
   const [transcript, setTranscript] = useState("");
   const [manualAction, setManualAction] = useState("");
+  const [previousActions, setPreviousActions] = useState<PreviousActionItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
   
@@ -60,19 +98,25 @@ export default function AtaReunioes() {
           setLiveTranscript(interimTranscript);
           
           if (finalText) {
-            setTranscript(prev => {
-              const newTranscript = prev + finalText;
-              if (newTranscript.length % 500 < finalText.length) {
-                analyzeTranscriptAuto(newTranscript);
-              }
-              return newTranscript;
-            });
+            // Adiciona à transcrição completa
+            setTranscript(prev => prev + finalText);
             
+            // DETECTAR QUALQUER COMANDO DE VOZ
             const lowerText = finalText.toLowerCase();
-            if (lowerText.includes("anotar na ata") || lowerText.includes("anotar ata")) {
-              const textBeforeCommand = finalText.split(/anotar na ata|anotar ata/i)[0].trim();
+            const commandFound = VOICE_COMMANDS.find(cmd => lowerText.includes(cmd));
+            
+            if (commandFound) {
+              // Extrair texto ANTES do comando
+              const regex = new RegExp(commandFound, "i");
+              const parts = finalText.split(regex);
+              const textBeforeCommand = parts[0].trim();
+              
               if (textBeforeCommand.length > 5) {
+                // Adiciona SOMENTE quando houver comando
                 setSuggestions(prev => [...prev, textBeforeCommand]);
+                
+                // Feedback visual/sonoro (opcional)
+                console.log(`✅ Ação capturada pelo comando: "${commandFound}"`);
               }
             }
           }
@@ -116,24 +160,89 @@ export default function AtaReunioes() {
     }
   };
 
-  const analyzeTranscriptAuto = async (text: string) => {
-    if (!text.trim() || text.length < 50) return;
+  // Load CSV file com UTF-8 correto
+  const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    try {
-      const result = await analyzeTranscript(text);
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      let text = event.target?.result as string;
       
-      if (!result.error && result.actions.length > 0) {
-        setSuggestions(prev => {
-          const existingActions = new Set(prev.map(a => a.toLowerCase().trim()));
-          const newActions = result.actions.filter(
-            action => !existingActions.has(action.toLowerCase().trim())
-          );
-          return [...prev, ...newActions];
-        });
+      // Corrigir encoding se necessário
+      if (text.includes('Ã§Ã£') || text.includes('SaÃ­das') || text.includes('ResponsÃ¡vel')) {
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder('utf-8');
+        try {
+          const bytes = encoder.encode(text);
+          text = decoder.decode(bytes);
+        } catch (err) {
+          console.log("Falha ao recodificar, continuando com texto original");
+        }
       }
-    } catch (error) {
-      console.error("Erro na análise automática:", error);
-    }
+      
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+
+      if (lines.length < 2) return;
+
+      const actions: PreviousActionItem[] = [];
+      
+      // Detectar índice das colunas pelo header
+      let entradaIdx = 0;
+      let acaoIdx = 1;
+      let responsavelIdx = 2;
+      
+      const headerCols = lines[0].split(/\t|,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+      headerCols.forEach((col, idx) => {
+        const cleanCol = col.replace(/"/g, "").toLowerCase().trim();
+        if (cleanCol.includes('entrada')) entradaIdx = idx;
+        if (cleanCol.includes('saída') || cleanCol.includes('saida') || cleanCol.includes('ação') || cleanCol.includes('acao') || cleanCol.includes('decisão')) acaoIdx = idx;
+        if (cleanCol.includes('responsável') || cleanCol.includes('responsavel')) responsavelIdx = idx;
+      });
+
+      lines.slice(1).forEach((line) => {
+        const cols = line
+          .split(/\t|,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+          .map(c => c.replace(/"/g, "").trim());
+
+        if (cols.length < 3) return;
+
+        const entrada = cols[entradaIdx] || "";
+        const actionText = cols[acaoIdx] || "";
+        const responsavel = cols[responsavelIdx] || "Não definido";
+
+        // Aceita APENAS "Ação" (ignora "Apresentação")
+        const isAction = entrada.toLowerCase().includes('acao') || 
+                        entrada.toLowerCase().includes('ação') || 
+                        entrada === 'Ação' ||
+                        entrada.includes('Ã§Ã£o');
+        
+        const isPresentation = entrada.toLowerCase().includes('apresenta') ||
+                              entrada.toLowerCase().includes('apresentação');
+
+        if (isAction && !isPresentation && actionText && actionText.length > 3) {
+          actions.push({
+            action: actionText,
+            responsavel,
+          });
+        }
+      });
+
+      setPreviousActions(actions);
+      
+      if (actions.length === 0) {
+        alert("Nenhuma ação encontrada no CSV. Verifique o formato do arquivo.");
+      }
+    };
+
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const analyzeTranscriptAuto = async (text: string) => {
+    // FUNÇÃO DESATIVADA - Não analisa automaticamente mais
+    // Agora só captura com comandos de voz específicos
+    return;
   };
 
   const handleAnalyze = async () => {
@@ -255,6 +364,58 @@ export default function AtaReunioes() {
           </div>
         </div>
 
+        {/* Ações da Reunião Anterior */}
+        <section className="p-8 border-b border-gray-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-5">
+            Ações da Reunião Anterior
+          </h3>
+          <input
+            type="file"
+            accept=".csv"
+            onChange={handleFileLoad}
+            className="w-full p-3 border-2 border-gray-200 rounded-xl mb-3 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-500 file:text-white file:font-semibold hover:file:bg-emerald-600 file:cursor-pointer"
+          />
+          <div className="space-y-3">
+            {previousActions.length === 0 ? (
+              <p className="text-center py-5 text-gray-500">
+                Carregue um arquivo CSV para ver as ações anteriores
+              </p>
+            ) : (
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">#</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Ação da reunião anterior</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Responsável</th>
+                      <th className="px-3 py-2 text-center font-semibold text-gray-700">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {previousActions.map((item, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-600 align-top">{i + 1}</td>
+                        <td className="px-3 py-2 text-gray-800 align-top">{item.action}</td>
+                        <td className="px-3 py-2 text-gray-700 align-top">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                            {item.responsavel}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center align-top">
+                          <select className="px-2 py-1 border-2 border-gray-200 rounded-lg text-xs focus:outline-none focus:border-emerald-500" defaultValue="Pendente">
+                            <option value="Pendente">Pendente</option>
+                            <option value="Concluído">OK</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* Transcrição COM MICROFONE */}
         <section className="p-8 border-b border-gray-200">
           <div className="flex items-center justify-between mb-5">
@@ -276,9 +437,17 @@ export default function AtaReunioes() {
           {isListening && (
             <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl">
               <p className="text-sm font-semibold text-blue-800 mb-2">
-                🔴 Gravando... (Diga "anotar na ata" para capturar ação específica)
+                🔴 Gravando... Use um dos comandos abaixo para capturar ações:
               </p>
-              <p className="text-gray-700 italic">
+              <div className="flex flex-wrap gap-2 mt-2">
+                {VOICE_COMMANDS.slice(0, 10).map((cmd, i) => (
+                  <span key={i} className="px-2 py-1 bg-blue-200 text-blue-900 text-xs rounded-full">
+                    "{cmd}"
+                  </span>
+                ))}
+                <span className="text-xs text-blue-700 italic">...e mais {VOICE_COMMANDS.length - 10} comandos</span>
+              </div>
+              <p className="text-gray-700 italic mt-3 font-semibold">
                 {liveTranscript || "Aguardando fala..."}
               </p>
             </div>
