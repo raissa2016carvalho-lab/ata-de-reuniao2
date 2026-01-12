@@ -68,8 +68,8 @@ export default function AtaReunioes() {
   
   // Estados para pauta da reunião
   const [showPauta, setShowPauta] = useState(false);
-  const [assunto, setAssunto] = useState("");
   const [objetivo, setObjetivo] = useState("");
+  const [pautaItems, setPautaItems] = useState<string[]>([""]);
   
   // Estados para o microfone
   const [isListening, setIsListening] = useState(false);
@@ -333,15 +333,28 @@ export default function AtaReunioes() {
 
     let csv = '\ufeff';
     
-    // Cabeçalho da Ata com Pauta
-    if (assunto || objetivo) {
-      csv += `"=== ATA DE REUNIÃO ==="\n`;
-      csv += `"Data: ${formatDateTimeBR(today)}"\n`;
-      if (assunto) csv += `"Assunto: ${assunto}"\n`;
-      if (objetivo) csv += `"Objetivo: ${objetivo}"\n`;
+    // Cabeçalho da Ata
+    csv += `"=== ATA DE REUNIÃO ==="\n`;
+    csv += `"Data: ${formatDateTimeBR(today)}"\n\n`;
+    
+    // Objetivo
+    if (objetivo) {
+      csv += `"OBJETIVO DA REUNIÃO:"\n`;
+      csv += `"${objetivo}"\n\n`;
+    }
+    
+    // Pauta
+    const pautaPreenchida = pautaItems.filter(item => item.trim());
+    if (pautaPreenchida.length > 0) {
+      csv += `"PAUTA:"\n`;
+      pautaPreenchida.forEach((item, i) => {
+        csv += `"${i + 1}. ${item}"\n`;
+      });
       csv += `\n`;
     }
     
+    // Ações
+    csv += `"AÇÕES:"\n`;
     csv += '"Ação","Responsável","Data","Status"\n';
 
     checklist.forEach((c) => {
@@ -356,6 +369,22 @@ export default function AtaReunioes() {
     a.click();
 
     alert("✅ Ata salva com sucesso!");
+  };
+
+  const handleAddPautaItem = () => {
+    setPautaItems([...pautaItems, ""]);
+  };
+
+  const handleRemovePautaItem = (index: number) => {
+    if (pautaItems.length > 1) {
+      setPautaItems(pautaItems.filter((_, i) => i !== index));
+    }
+  };
+
+  const handlePautaItemChange = (index: number, value: string) => {
+    const newItems = [...pautaItems];
+    newItems[index] = value;
+    setPautaItems(newItems);
   };
 
   return (
@@ -405,57 +434,65 @@ export default function AtaReunioes() {
               <div className="flex items-center gap-3 mb-6">
                 <span className="text-4xl">📋</span>
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-800">Pauta da Reunião</h3>
-                  <p className="text-sm text-gray-600">Defina o assunto e objetivo da reunião</p>
+                  <h3 className="text-2xl font-bold text-gray-800">Objetivo e Pauta da Reunião</h3>
+                  <p className="text-sm text-gray-600">Defina o objetivo e os assuntos que serão discutidos</p>
                 </div>
               </div>
 
-              <div className="space-y-5">
-                {/* Assunto */}
-                <div className="bg-white rounded-xl p-6 shadow-md">
-                  <label className="block text-sm font-bold text-gray-700 mb-3">
-                    📌 Assunto da Reunião
-                  </label>
-                  <input
-                    type="text"
-                    value={assunto}
-                    onChange={(e) => setAssunto(e.target.value)}
-                    placeholder="Ex: Reunião Semanal de Segurança do Trabalho"
-                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-lg"
-                  />
-                </div>
-
+              <div className="space-y-6">
                 {/* Objetivo */}
                 <div className="bg-white rounded-xl p-6 shadow-md">
-                  <label className="block text-sm font-bold text-gray-700 mb-3">
+                  <label className="block text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
                     🎯 Objetivo da Reunião
                   </label>
                   <textarea
                     value={objetivo}
                     onChange={(e) => setObjetivo(e.target.value)}
                     placeholder="Ex: Revisar indicadores de segurança, discutir ações preventivas e alinhar estratégias para o próximo período"
-                    className="w-full h-32 p-4 border-2 border-gray-200 rounded-xl resize-y focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-base"
+                    className="w-full h-24 p-4 border-2 border-gray-200 rounded-xl resize-y focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-base"
                   />
                 </div>
 
-                {/* Resumo Visual */}
-                {(assunto || objetivo) && (
-                  <div className="bg-white rounded-xl p-6 shadow-md border-l-4 border-blue-500">
-                    <p className="text-xs uppercase tracking-wide text-gray-500 mb-3">Prévia da Pauta</p>
-                    {assunto && (
-                      <div className="mb-3">
-                        <span className="font-bold text-gray-700">Assunto: </span>
-                        <span className="text-gray-800">{assunto}</span>
-                      </div>
-                    )}
-                    {objetivo && (
-                      <div>
-                        <span className="font-bold text-gray-700">Objetivo: </span>
-                        <span className="text-gray-800">{objetivo}</span>
-                      </div>
-                    )}
+                {/* Pauta com múltiplos itens */}
+                <div className="bg-white rounded-xl p-6 shadow-md">
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                      📌 Pauta da Reunião
+                    </label>
+                    <button
+                      onClick={handleAddPautaItem}
+                      className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-all shadow-sm hover:shadow-md"
+                    >
+                      ➕ Adicionar Assunto
+                    </button>
                   </div>
-                )}
+
+                  <div className="space-y-3">
+                    {pautaItems.map((item, index) => (
+                      <div key={index} className="flex gap-3 items-start">
+                        <div className="flex-shrink-0 w-8 h-10 flex items-center justify-center">
+                          <span className="text-gray-600 font-semibold">{index + 1}.</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={item}
+                          onChange={(e) => handlePautaItemChange(index, e.target.value)}
+                          placeholder={`Ex: ${index === 0 ? "Análise de indicadores de segurança" : index === 1 ? "Revisão de procedimentos" : "Outro assunto"}`}
+                          className="flex-1 p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                        {pautaItems.length > 1 && (
+                          <button
+                            onClick={() => handleRemovePautaItem(index)}
+                            className="flex-shrink-0 px-3 py-2 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-semibold rounded-lg transition-all"
+                            title="Remover este assunto"
+                          >
+                            🗑️
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </section>
