@@ -373,6 +373,16 @@ export default function AtaReunioes() {
               </p>
             </div>
             <div className="flex items-center gap-4">
+              <button
+                onClick={() => setShowPauta(!showPauta)}
+                className={`px-6 py-3 font-semibold rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 ${
+                  showPauta 
+                    ? "bg-emerald-500 text-white" 
+                    : "bg-white text-[#1e3c72]"
+                }`}
+              >
+                📋 {showPauta ? "Ocultar Pauta" : "Incluir Pauta"}
+              </button>
               <a
                 href="/"
                 className="px-6 py-3 bg-white text-[#1e3c72] font-semibold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
@@ -387,6 +397,69 @@ export default function AtaReunioes() {
             </div>
           </div>
         </div>
+
+        {/* Pauta da Reunião (Condicional) */}
+        {showPauta && (
+          <section className="p-8 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <div className="max-w-4xl mx-auto">
+              <div className="flex items-center gap-3 mb-6">
+                <span className="text-4xl">📋</span>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-800">Pauta da Reunião</h3>
+                  <p className="text-sm text-gray-600">Defina o assunto e objetivo da reunião</p>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                {/* Assunto */}
+                <div className="bg-white rounded-xl p-6 shadow-md">
+                  <label className="block text-sm font-bold text-gray-700 mb-3">
+                    📌 Assunto da Reunião
+                  </label>
+                  <input
+                    type="text"
+                    value={assunto}
+                    onChange={(e) => setAssunto(e.target.value)}
+                    placeholder="Ex: Reunião Semanal de Segurança do Trabalho"
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-lg"
+                  />
+                </div>
+
+                {/* Objetivo */}
+                <div className="bg-white rounded-xl p-6 shadow-md">
+                  <label className="block text-sm font-bold text-gray-700 mb-3">
+                    🎯 Objetivo da Reunião
+                  </label>
+                  <textarea
+                    value={objetivo}
+                    onChange={(e) => setObjetivo(e.target.value)}
+                    placeholder="Ex: Revisar indicadores de segurança, discutir ações preventivas e alinhar estratégias para o próximo período"
+                    className="w-full h-32 p-4 border-2 border-gray-200 rounded-xl resize-y focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-base"
+                  />
+                </div>
+
+                {/* Resumo Visual */}
+                {(assunto || objetivo) && (
+                  <div className="bg-white rounded-xl p-6 shadow-md border-l-4 border-blue-500">
+                    <p className="text-xs uppercase tracking-wide text-gray-500 mb-3">Prévia da Pauta</p>
+                    {assunto && (
+                      <div className="mb-3">
+                        <span className="font-bold text-gray-700">Assunto: </span>
+                        <span className="text-gray-800">{assunto}</span>
+                      </div>
+                    )}
+                    {objetivo && (
+                      <div>
+                        <span className="font-bold text-gray-700">Objetivo: </span>
+                        <span className="text-gray-800">{objetivo}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Ações da Reunião Anterior */}
         <section className="p-8 border-b border-gray-200">
