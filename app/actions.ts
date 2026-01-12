@@ -20,7 +20,7 @@ export async function analyzeTranscript(
           role: "system",
           content: `Você é um assistente especializado em análise de atas de reunião de segurança do trabalho.
 
-MISSÃO: Extrair TODAS as ações concretas, tarefas, compromissos e responsabilidades mencionadas na reunião.
+MISSÃO: Extrair TODAS as ações concretas, tarefas, compromissos e responsabilidades mencionadas na reunião, por favor não repetir ações listadas anteriomente
 
 REGRAS OBRIGATÓRIAS:
 1. SEMPRE identifique quem falou quando houver "Nome:" no texto (ex: "João: fazer relatório" → "João: fazer relatório")
