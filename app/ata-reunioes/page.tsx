@@ -4,13 +4,20 @@ import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "../actions";
 
 const DEFAULT_AREAS = [
-  "SESMT - Ceará",
-  "SESMT - Bahia",
-  "SESMT - Piauí",
-  "SESMT - Rio Grande do Norte",
-  "SESMT - Minas Gerais",
-  "SESMT - São Paulo",
-  "SESMT - Monitoria",
+  "ALMOXARIFADO",
+  "ALMOXARIFADO CLIENTE",
+  "CONTRATOS",
+  "COMPRAS",
+  "FROTA",
+  "FACILITIES"
+  "RECURSOS HUMANOS/ DEPARTAMENTO PESSOAL",
+  "OFICINA",
+  "SALA TECNICA"
+  "QUALIDADE/MEIO AMBIENTE"
+  "MARKETING"
+  "OPERAÇÃO",
+  "PLANEJAMENTO",
+  "CONVIDADO EXTERNO"
 ];
 
 // Comandos de voz para capturar ações - LISTA COMPLETA
