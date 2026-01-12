@@ -13,6 +13,38 @@ const STATES = [
   "SESMT - Monitoria",
 ];
 
+// Comandos de voz para capturar ações
+const VOICE_COMMANDS = [
+  "anotar na ata",
+  "anotar ata",
+  "escrever na ata",
+  "escreva na ata",
+  "anote aí",
+  "anota aí",
+  "registrar na ata",
+  "registre na ata",
+  "adicionar na ata",
+  "adicione na ata",
+  "incluir na ata",
+  "inclua na ata",
+  "salvar na ata",
+  "salve na ata",
+  "gravar na ata",
+  "grave na ata",
+  "colocar na ata",
+  "coloque na ata",
+  "inserir na ata",
+  "insira na ata",
+  "ação para ata",
+  "item para ata",
+  "ponto de ata",
+  "vai para ata",
+  "isso é ata",
+  "é ação",
+  "criar ação",
+  "nova ação",
+];
+
 interface ChecklistItem {
   type: string;
   text: string;
@@ -74,22 +106,21 @@ export default function Home() {
           
           if (finalText) {
             // Adiciona à transcrição completa que fica visível
-            setTranscript(prev => {
-              const newTranscript = prev + finalText;
-              // Analisa automaticamente com IA a cada 500 caracteres de texto acumulado
-              if (newTranscript.length % 500 < finalText.length) {
-                analyzeTranscriptAuto(newTranscript);
-              }
-              return newTranscript;
-            });
+            setTranscript(prev => prev + finalText);
             
-            // Detectar comando "anotar na ata"
+            // DETECTAR QUALQUER COMANDO DE VOZ DA LISTA
             const lowerText = finalText.toLowerCase();
-            if (lowerText.includes("anotar na ata") || lowerText.includes("anotar ata")) {
-              // Extrair texto antes do comando
-              const textBeforeCommand = finalText.split(/anotar na ata|anotar ata/i)[0].trim();
+            const commandFound = VOICE_COMMANDS.find(cmd => lowerText.includes(cmd));
+            
+            if (commandFound) {
+              // Extrair texto ANTES do comando
+              const regex = new RegExp(commandFound, "i");
+              const parts = finalText.split(regex);
+              const textBeforeCommand = parts[0].trim();
+              
               if (textBeforeCommand.length > 5) {
                 setSuggestions(prev => [...prev, textBeforeCommand]);
+                console.log(`✅ Ação capturada: "${commandFound}"`);
               }
             }
           }
@@ -136,24 +167,9 @@ export default function Home() {
 
   // Análise automática da transcrição com IA (sem bloquear a interface)
   const analyzeTranscriptAuto = async (text: string) => {
-    if (!text.trim() || text.length < 50) return;
-
-    try {
-      const result = await analyzeTranscript(text);
-      
-      if (!result.error && result.actions.length > 0) {
-        // Adiciona apenas ações novas (evita duplicatas)
-        setSuggestions(prev => {
-          const existingActions = new Set(prev.map(a => a.toLowerCase().trim()));
-          const newActions = result.actions.filter(
-            action => !existingActions.has(action.toLowerCase().trim())
-          );
-          return [...prev, ...newActions];
-        });
-      }
-    } catch (error) {
-      console.error("Erro na análise automática:", error);
-    }
+    // ANÁLISE AUTOMÁTICA DESATIVADA
+    // Agora só captura com comandos de voz específicos
+    return;
   };
 
   // Load CSV file com UTF-8 correto
@@ -615,9 +631,17 @@ export default function Home() {
           {isListening && (
             <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl">
               <p className="text-sm font-semibold text-blue-800 mb-2">
-                🔴 Gravando... (Diga "anotar na ata" para capturar ação específica)
+                🔴 Gravando... Use comandos como: "anotar na ata", "escreva na ata", "anote aí"
               </p>
-              <p className="text-gray-700 italic">
+              <div className="flex flex-wrap gap-2 mt-2">
+                {VOICE_COMMANDS.slice(0, 8).map((cmd, i) => (
+                  <span key={i} className="px-2 py-1 bg-blue-200 text-blue-900 text-xs rounded-full">
+                    "{cmd}"
+                  </span>
+                ))}
+                <span className="text-xs text-blue-700 italic">...e mais {VOICE_COMMANDS.length - 8} comandos</span>
+              </div>
+              <p className="text-gray-700 italic mt-3 font-semibold">
                 {liveTranscript || "Aguardando fala..."}
               </p>
             </div>
@@ -673,7 +697,7 @@ export default function Home() {
               )}
               {suggestions.length === 0 && !analysisMessage ? (
                 <p className="text-center py-5 text-gray-500">
-                  As ações aparecerão aqui (IA automática + comando de voz + manual)
+                  As ações aparecerão aqui quando você usar comandos de voz ou clicar "Analisar com IA"
                 </p>
               ) : (
                 <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-xl">
