@@ -254,18 +254,6 @@ export default function Home() {
 
     const result = await analyzeTranscript(transcript);
     
-    <div className="hidden md:flex items-center gap-4">
-  <a href="/registros" className="...">
-    📋 Registros Gerais
-  </a>
-  {/* 👇 NOVO BOTÃO ADICIONADO AQUI */}
-  <a href="/ata-reuniao" className="...">
-    📄 Ata de reunião B&Q
-  </a>
-  <img src="/LogoBeqbranca.png" alt="Logo Beq" ... />
-</div>
-
-
     if (result.error) {
       setAnalysisMessage(`Erro: ${result.error}`);
     } else if (result.actions.length === 0) {
