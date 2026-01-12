@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -253,7 +252,7 @@ export default function Home() {
     setAnalysisMessage("IA está analisando a transcrição...");
 
     const result = await analyzeTranscript(transcript);
-    
+
     if (result.error) {
       setAnalysisMessage(`Erro: ${result.error}`);
     } else if (result.actions.length === 0) {
@@ -470,6 +469,12 @@ export default function Home() {
             </div>
             <div className="hidden md:flex items-center gap-4">
               <a
+                href="/ata-reunioes"
+                className="px-6 py-3 bg-white text-[#1e3c72] font-semibold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+              >
+                🎤 Ata Reuniões Gerais
+              </a>
+              <a
                 href="/registros"
                 className="px-6 py-3 bg-white text-[#1e3c72] font-semibold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
               >
@@ -545,7 +550,7 @@ export default function Home() {
         {/* Apresentação dos Números */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
-          Apresentação dos Números de Segurança - ( KPI's; Metas de inspeção em campo; Eventos ocorridos; inspeções cruzadas )
+            Apresentação dos Números de Segurança
           </h3>
           <div className="space-y-3">
             {STATES.map((state) => {
