@@ -253,6 +253,18 @@ export default function Home() {
     setAnalysisMessage("IA está analisando a transcrição...");
 
     const result = await analyzeTranscript(transcript);
+    
+    <div className="hidden md:flex items-center gap-4">
+  <a href="/registros" className="...">
+    📋 Registros Gerais
+  </a>
+  {/* 👇 NOVO BOTÃO ADICIONADO AQUI */}
+  <a href="/ata-reuniao" className="...">
+    📄 Ata de reunião B&Q
+  </a>
+  <img src="/LogoBeqbranca.png" alt="Logo Beq" ... />
+</div>
+
 
     if (result.error) {
       setAnalysisMessage(`Erro: ${result.error}`);
