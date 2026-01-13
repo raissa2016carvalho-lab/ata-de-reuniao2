@@ -407,16 +407,17 @@ export default function AtaReunioes() {
       const completedActions = checklist.filter(c => c.done).length;
       const pendingActions = checklist.filter(c => !c.done).length;
 
-      const newMeeting = {
-        id: formatDate(today),
-        date: formatDateBR(today),
-        presentations: 0,
-        actions: checklist.length,
-        completed: completedActions,
-        pending: pendingActions,
-        csv_data: csv,
-        tipo: 'outras'
-      };
+     const newMeeting = {
+  id: `${formatDate(today)}-outras-${Date.now()}`,  // ✅ Agora é único!
+  date: formatDateBR(today),
+  presentations: 0,
+  actions: checklist.length,
+  completed: completedActions,
+  pending: pendingActions,
+  csv_data: csv,
+  tipo: 'outras'
+};
+
 
       const { data: existingMeeting } = await supabase
         .from('meetings')
