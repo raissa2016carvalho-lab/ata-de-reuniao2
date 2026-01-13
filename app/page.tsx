@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "./actions";
+import { supabase } from "@/lib/supabase";
 
 const STATES = [
   "SESMT - Ceará",
@@ -68,6 +69,7 @@ export default function Home() {
   const [previousActions, setPreviousActions] = useState<PreviousActionItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   
   // Estados para o microfone
   const [isListening, setIsListening] = useState(false);
@@ -105,15 +107,12 @@ export default function Home() {
           setLiveTranscript(interimTranscript);
           
           if (finalText) {
-            // Adiciona à transcrição completa que fica visível
             setTranscript(prev => prev + finalText);
             
-            // DETECTAR QUALQUER COMANDO DE VOZ DA LISTA
             const lowerText = finalText.toLowerCase();
             const commandFound = VOICE_COMMANDS.find(cmd => lowerText.includes(cmd));
             
             if (commandFound) {
-              // Extrair texto ANTES do comando
               const regex = new RegExp(commandFound, "i");
               const parts = finalText.split(regex);
               const textBeforeCommand = parts[0].trim();
@@ -148,7 +147,6 @@ export default function Home() {
     };
   }, [isListening]);
 
-  // Toggle microfone
   const toggleListening = () => {
     if (!recognitionRef.current) {
       alert("Seu navegador não suporta reconhecimento de voz. Use Chrome ou Edge.");
@@ -165,14 +163,6 @@ export default function Home() {
     }
   };
 
-  // Análise automática da transcrição com IA (sem bloquear a interface)
-  const analyzeTranscriptAuto = async (text: string) => {
-    // ANÁLISE AUTOMÁTICA DESATIVADA
-    // Agora só captura com comandos de voz específicos
-    return;
-  };
-
-  // Load CSV file com UTF-8 correto
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -182,9 +172,7 @@ export default function Home() {
     reader.onload = (event) => {
       let text = event.target?.result as string;
       
-      // Corrigir encoding se necessário (detecta caracteres UTF-8 mal codificados)
       if (text.includes('Ã§Ã£') || text.includes('SaÃ­das') || text.includes('ResponsÃ¡vel')) {
-        // Está com encoding errado, tentar recodificar
         const encoder = new TextEncoder();
         const decoder = new TextDecoder('utf-8');
         try {
@@ -201,13 +189,11 @@ export default function Home() {
 
       const actions: PreviousActionItem[] = [];
       
-      // Detectar índice das colunas pelo header
       const header = lines[0].toLowerCase();
       let entradaIdx = 0;
       let acaoIdx = 1;
       let responsavelIdx = 2;
       
-      // Tentar detectar as colunas corretas
       const headerCols = lines[0].split(/\t|,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
       headerCols.forEach((col, idx) => {
         const cleanCol = col.replace(/"/g, "").toLowerCase().trim();
@@ -217,24 +203,21 @@ export default function Home() {
       });
 
       lines.slice(1).forEach((line) => {
-        // Suportar tanto vírgula quanto tab como separador
         const cols = line
           .split(/\t|,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
           .map(c => c.replace(/"/g, "").trim());
 
-        if (cols.length < 3) return; // Linha inválida
+        if (cols.length < 3) return;
 
         const entrada = cols[entradaIdx] || "";
         const actionText = cols[acaoIdx] || "";
         const responsavel = cols[responsavelIdx] || "Não definido";
 
-        // Aceita APENAS "Ação" (ignora "Apresentação")
         const isAction = entrada.toLowerCase().includes('acao') || 
                         entrada.toLowerCase().includes('ação') || 
                         entrada === 'Ação' ||
                         entrada.includes('Ã§Ã£o');
         
-        // Ignora explicitamente apresentações
         const isPresentation = entrada.toLowerCase().includes('apresenta') ||
                               entrada.toLowerCase().includes('apresentação');
 
@@ -253,11 +236,9 @@ export default function Home() {
       }
     };
 
-    // Tentar múltiplos encodings
     reader.readAsText(file, "UTF-8");
   };
 
-  // Analisar com IA - MANTÉM ações anteriores
   const handleAnalyze = async () => {
     if (!transcript.trim()) {
       alert("Cole a transcrição primeiro");
@@ -274,7 +255,6 @@ export default function Home() {
     } else if (result.actions.length === 0) {
       setAnalysisMessage("Nenhuma ação identificada na transcrição");
     } else {
-      // MANTÉM as ações anteriores e adiciona as novas
       setSuggestions(prev => {
         const existingActions = new Set(prev.map(a => a.toLowerCase().trim()));
         const newActions = result.actions.filter(
@@ -387,8 +367,8 @@ export default function Home() {
     );
   };
 
-  // Download com UTF-8 BOM para Excel E SALVAR NO HISTÓRICO
-  const handleDownload = () => {
+  // Download com UTF-8 BOM E SALVAR NO SUPABASE
+  const handleDownload = async () => {
     const presentationItems = checklist.filter((c) => c.type === "Apresentação");
     const actionItems = checklist.filter((c) => c.type === "Ação");
     const allItems = [...presentationItems, ...actionItems];
@@ -398,72 +378,89 @@ export default function Home() {
       return;
     }
 
-    const today = new Date();
-    const dueDate = new Date(today);
-    dueDate.setDate(dueDate.getDate() + 8);
+    setIsSaving(true);
 
-    const formatDate = (d: Date) => d.toISOString().split("T")[0];
-    const formatDateBR = (d: Date) => {
-      const day = String(d.getDate()).padStart(2, "0");
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const year = d.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
+    try {
+      const today = new Date();
+      const dueDate = new Date(today);
+      dueDate.setDate(dueDate.getDate() + 8);
 
-    // Header com UTF-8 BOM
-    let csv = '\ufeff"Entradas","Saídas: Decisões e ações","Responsável","Data","Status","Tempo"\n';
+      const formatDate = (d: Date) => d.toISOString().split("T")[0];
+      const formatDateBR = (d: Date) => {
+        const day = String(d.getDate()).padStart(2, "0");
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
 
-    allItems.forEach((c) => {
-      const entrada = c.type;
-      const saidas = c.text;
-      const responsavel = c.area;
-      const data = formatDate(dueDate);
-      const status = c.done ? "Concluído" : "Pendente";
-      const tempo = c.time || "";
+      // Gerar CSV
+      let csv = '\ufeff"Entradas","Saídas: Decisões e ações","Responsável","Data","Status","Tempo"\n';
 
-      csv += `"${entrada}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
-    });
+      allItems.forEach((c) => {
+        const entrada = c.type;
+        const saidas = c.text;
+        const responsavel = c.area;
+        const data = formatDate(dueDate);
+        const status = c.done ? "Concluído" : "Pendente";
+        const tempo = c.time || "";
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
-    a.click();
+        csv += `"${entrada}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
+      });
 
-    // SALVAR NO HISTÓRICO (localStorage)
-    const completedActions = actionItems.filter(c => c.done).length;
-    const pendingActions = actionItems.filter(c => !c.done).length;
+      // Download do arquivo
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
+      a.click();
 
-    const newMeeting = {
-      id: formatDate(today),
-      date: formatDateBR(today),
-      presentations: presentationItems.length,
-      actions: actionItems.length,
-      completed: completedActions,
-      pending: pendingActions,
-      csvData: csv, // Salva o CSV completo
-    };
+      // Calcular estatísticas
+      const completedActions = actionItems.filter(c => c.done).length;
+      const pendingActions = actionItems.filter(c => !c.done).length;
 
-    // Carregar reuniões existentes
-    const savedMeetings = localStorage.getItem("meetings");
-    const meetings = savedMeetings ? JSON.parse(savedMeetings) : [];
+      // SALVAR NO SUPABASE
+      const newMeeting = {
+        id: formatDate(today),
+        date: formatDateBR(today),
+        presentations: presentationItems.length,
+        actions: actionItems.length,
+        completed: completedActions,
+        pending: pendingActions,
+        csv_data: csv,
+      };
 
-    // Verificar se já existe reunião com a mesma data
-    const existingIndex = meetings.findIndex((m: any) => m.id === newMeeting.id);
-    
-    if (existingIndex >= 0) {
-      // Atualizar reunião existente
-      meetings[existingIndex] = newMeeting;
-    } else {
-      // Adicionar nova reunião
-      meetings.unshift(newMeeting); // Adiciona no início
+      // Verificar se já existe reunião com essa data
+      const { data: existingMeeting } = await supabase
+        .from('meetings')
+        .select('id')
+        .eq('id', newMeeting.id)
+        .single();
+
+      if (existingMeeting) {
+        // Atualizar reunião existente
+        const { error } = await supabase
+          .from('meetings')
+          .update(newMeeting)
+          .eq('id', newMeeting.id);
+
+        if (error) throw error;
+        alert("✅ Reunião atualizada com sucesso!\n\nAcesse 'Registros Gerais' para ver o histórico.");
+      } else {
+        // Inserir nova reunião
+        const { error } = await supabase
+          .from('meetings')
+          .insert([newMeeting]);
+
+        if (error) throw error;
+        alert("✅ Reunião salva com sucesso!\n\nAcesse 'Registros Gerais' para ver o histórico.");
+      }
+
+    } catch (error) {
+      console.error('Erro ao salvar reunião:', error);
+      alert("❌ Erro ao salvar reunião no banco de dados. Verifique a conexão com o Supabase.");
+    } finally {
+      setIsSaving(false);
     }
-
-    // Salvar no localStorage
-    localStorage.setItem("meetings", JSON.stringify(meetings));
-
-    // Feedback visual
-    alert("✅ Reunião salva com sucesso!\n\nAcesse 'Registros Gerais' para ver o histórico.");
   };
 
   const completedItems = checklist.filter((c) => c.done);
@@ -785,10 +782,10 @@ export default function Home() {
           )}
           <button
             onClick={handleDownload}
-            disabled={checklist.length === 0}
+            disabled={checklist.length === 0 || isSaving}
             className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            📥 Baixar Relatório ({checklist.length} itens)
+            {isSaving ? "💾 Salvando..." : `📥 Baixar e Salvar Relatório (${checklist.length} itens)`}
           </button>
         </section>
       </div>
