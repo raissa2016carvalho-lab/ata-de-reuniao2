@@ -1,33 +1,74 @@
 "use client";
 
 import { useState, useEffect } from "react";
-
-interface Meeting {
-  id: string;
-  date: string;
-  presentations: number;
-  actions: number;
-  completed: number;
-  pending: number;
-  csvData?: string; // CSV completo salvo
-}
+import { supabase, Meeting } from "@/lib/supabase";
 
 export default function RegistrosPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedMeeting, setSelectedMeeting] = useState<string | null>(null);
 
-  // Carregar reuniões salvas
+  // Carregar reuniões do Supabase
   useEffect(() => {
-    const savedMeetings = localStorage.getItem("meetings");
-    if (savedMeetings) {
-      setMeetings(JSON.parse(savedMeetings));
-    }
+    loadMeetings();
   }, []);
+
+  async function loadMeetings() {
+    try {
+      const { data, error } = await supabase
+        .from('meetings')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Erro ao carregar reuniões:', error);
+        throw error;
+      }
+      
+      setMeetings(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar reuniões:', error);
+      alert('Erro ao carregar reuniões. Verifique a conexão com o Supabase.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteMeeting(id: string) {
+    if (!confirm('Tem certeza que deseja excluir esta reunião?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('meetings')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Atualizar lista local
+      setMeetings(meetings.filter(m => m.id !== id));
+      alert('Reunião excluída com sucesso!');
+    } catch (error) {
+      console.error('Erro ao excluir reunião:', error);
+      alert('Erro ao excluir reunião.');
+    }
+  }
 
   const totalMeetings = meetings.length;
   const totalActions = meetings.reduce((sum, m) => sum + m.actions, 0);
   const totalCompleted = meetings.reduce((sum, m) => sum + m.completed, 0);
   const totalPending = meetings.reduce((sum, m) => sum + m.pending, 0);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">⏳</div>
+          <div className="text-2xl font-bold text-gray-700">Carregando reuniões...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-5 md:p-8">
@@ -172,17 +213,12 @@ export default function RegistrosPage() {
                       <td className="px-6 py-4 text-center">
                         <div className="flex gap-2 justify-center">
                           <button
-                            onClick={() => setSelectedMeeting(meeting.id)}
-                            className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-all"
-                          >
-                            👁️ Ver Detalhes
-                          </button>
-                          <button
                             onClick={() => {
                               const currentMeeting = meetings.find(m => m.id === meeting.id);
-                              if (currentMeeting?.csvData) {
-                                // Baixar CSV salvo
-                                const blob = new Blob([currentMeeting.csvData], { type: "text/csv;charset=utf-8;" });
+                              if (currentMeeting?.csv_data) {
+                                const blob = new Blob([currentMeeting.csv_data], { 
+                                  type: "text/csv;charset=utf-8;" 
+                                });
                                 const url = URL.createObjectURL(blob);
                                 const a = document.createElement("a");
                                 a.href = url;
@@ -195,7 +231,13 @@ export default function RegistrosPage() {
                             }}
                             className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-all"
                           >
-                            📥 Baixar
+                            📥 Baixar CSV
+                          </button>
+                          <button
+                            onClick={() => deleteMeeting(meeting.id)}
+                            className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-all"
+                          >
+                            🗑️ Excluir
                           </button>
                         </div>
                       </td>
