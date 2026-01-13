@@ -18,7 +18,8 @@ export async function analyzeTranscript(
       messages: [
         {
           role: "system",
-          content: `Você é um assistente especializado em análise de atas de reunião de segurança do trabalho.
+          content: `Você é um assistente especializado em análise de atas de reunião de segurança do trabalho. eu preciso que voce so anote depois que dar o comando e as palavras apoos
+          o comando
 
 MISSÃO: Extrair APENAS ações únicas e concretas mencionadas na reunião, SEM REPETIÇÕES.
 
