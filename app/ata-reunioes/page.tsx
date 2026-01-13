@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "../actions";
+import { supabase } from "@/lib/supabase";
 
 const DEFAULT_AREAS = [
   "ALMOXARIFADO",
@@ -20,7 +21,6 @@ const DEFAULT_AREAS = [
   "CONVIDADO EXTERNO",
 ];
 
-// Comandos de voz para capturar ações - LISTA COMPLETA
 const VOICE_COMMANDS = [
   "anotar na ata",
   "anotar ata",
@@ -79,29 +79,24 @@ export default function AtaReunioes() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
   
-  // Estados para participantes
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [showParticipants, setShowParticipants] = useState(false);
   const [newParticipantName, setNewParticipantName] = useState("");
   const [newParticipantArea, setNewParticipantArea] = useState(DEFAULT_AREAS[0]);
   
-  // Estados para pauta da reunião
   const [showPauta, setShowPauta] = useState(false);
   const [objetivo, setObjetivo] = useState("");
   const [pautaItems, setPautaItems] = useState<string[]>([""]);
   
-  // Estados para o microfone
   const [isListening, setIsListening] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
 
-  // Gerar lista de responsáveis disponíveis (participantes + áreas padrão)
   const availableResponsibles = [
     ...participants.map(p => `${p.name} (${p.area})`),
     ...DEFAULT_AREAS
   ];
 
-  // Inicializar Web Speech API
   useEffect(() => {
     if (typeof window !== "undefined") {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -184,7 +179,6 @@ export default function AtaReunioes() {
     }
   };
 
-  // Funções para gerenciar participantes
   const handleAddParticipant = () => {
     if (!newParticipantName.trim()) {
       alert("Digite o nome do participante");
@@ -206,7 +200,6 @@ export default function AtaReunioes() {
     setParticipants(participants.filter(p => p.id !== id));
   };
 
-  // Load CSV file com UTF-8 correto
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -346,7 +339,7 @@ export default function AtaReunioes() {
     );
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (checklist.length === 0) {
       alert("Adicione pelo menos uma ação antes de exportar");
       return;
@@ -354,6 +347,12 @@ export default function AtaReunioes() {
 
     const today = new Date();
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
+    const formatDateBR = (d: Date) => {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
     const formatDateTimeBR = (d: Date) => {
       const day = String(d.getDate()).padStart(2, "0");
       const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -368,7 +367,6 @@ export default function AtaReunioes() {
     csv += `"=== ATA DE REUNIÃO ==="\n`;
     csv += `"Data: ${formatDateTimeBR(today)}"\n\n`;
     
-    // Participantes
     if (participants.length > 0) {
       csv += `"PARTICIPANTES:"\n`;
       participants.forEach((p, i) => {
@@ -377,13 +375,11 @@ export default function AtaReunioes() {
       csv += `\n`;
     }
     
-    // Objetivo
     if (objetivo) {
       csv += `"OBJETIVO DA REUNIÃO:"\n`;
       csv += `"${objetivo}"\n\n`;
     }
     
-    // Pauta
     const pautaPreenchida = pautaItems.filter(item => item.trim());
     if (pautaPreenchida.length > 0) {
       csv += `"PAUTA:"\n`;
@@ -393,7 +389,6 @@ export default function AtaReunioes() {
       csv += `\n`;
     }
     
-    // Ações
     csv += `"AÇÕES:"\n`;
     csv += '"Ação","Responsável","Data","Status"\n';
 
@@ -408,7 +403,47 @@ export default function AtaReunioes() {
     a.download = `ATA_REUNIAO_${formatDate(today)}.csv`;
     a.click();
 
-    alert("✅ Ata salva com sucesso!");
+    try {
+      const completedActions = checklist.filter(c => c.done).length;
+      const pendingActions = checklist.filter(c => !c.done).length;
+
+      const newMeeting = {
+        id: formatDate(today),
+        date: formatDateBR(today),
+        presentations: 0,
+        actions: checklist.length,
+        completed: completedActions,
+        pending: pendingActions,
+        csv_data: csv,
+        tipo: 'outras'
+      };
+
+      const { data: existingMeeting } = await supabase
+        .from('meetings')
+        .select('id')
+        .eq('id', newMeeting.id)
+        .single();
+
+      if (existingMeeting) {
+        const { error } = await supabase
+          .from('meetings')
+          .update(newMeeting)
+          .eq('id', newMeeting.id);
+
+        if (error) throw error;
+        alert("✅ Ata atualizada com sucesso no banco de dados!");
+      } else {
+        const { error } = await supabase
+          .from('meetings')
+          .insert([newMeeting]);
+
+        if (error) throw error;
+        alert("✅ Ata salva com sucesso no banco de dados!");
+      }
+    } catch (error) {
+      console.error('Erro ao salvar no Supabase:', error);
+      alert("❌ Erro ao salvar no banco de dados. O arquivo CSV foi baixado normalmente.");
+    }
   };
 
   const handleAddPautaItem = () => {
@@ -426,7 +461,6 @@ export default function AtaReunioes() {
     newItems[index] = value;
     setPautaItems(newItems);
   };
-
   return (
     <div className="p-5 md:p-8">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
@@ -489,7 +523,6 @@ export default function AtaReunioes() {
                 </div>
               </div>
 
-              {/* Formulário de adicionar participante */}
               <div className="bg-white rounded-xl p-6 shadow-md mb-6">
                 <div className="flex gap-4 items-end">
                   <div className="flex-1">
@@ -532,7 +565,6 @@ export default function AtaReunioes() {
                 </div>
               </div>
 
-              {/* Lista de participantes */}
               {participants.length > 0 && (
                 <div className="bg-white rounded-xl p-6 shadow-md">
                   <h4 className="text-sm font-bold text-gray-700 mb-4">
@@ -575,7 +607,7 @@ export default function AtaReunioes() {
           </section>
         )}
 
-        {/* Pauta da Reunião (Condicional) */}
+        {/* Pauta da Reunião */}
         {showPauta && (
           <section className="p-8 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="max-w-4xl mx-auto">
@@ -588,7 +620,6 @@ export default function AtaReunioes() {
               </div>
 
               <div className="space-y-6">
-                {/* Objetivo */}
                 <div className="bg-white rounded-xl p-6 shadow-md">
                   <label className="block text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
                     🎯 Objetivo da Reunião
@@ -601,7 +632,6 @@ export default function AtaReunioes() {
                   />
                 </div>
 
-                {/* Pauta com múltiplos itens */}
                 <div className="bg-white rounded-xl p-6 shadow-md">
                   <div className="flex items-center justify-between mb-4">
                     <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
@@ -882,7 +912,7 @@ export default function AtaReunioes() {
             disabled={checklist.length === 0}
             className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            📥 Baixar Relatório ({checklist.length} itens)
+            📥 Baixar e Salvar Relatório ({checklist.length} itens)
           </button>
         </section>
       </div>
