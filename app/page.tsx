@@ -620,7 +620,7 @@ export default function Home() {
                   : "bg-blue-500 hover:bg-blue-600 text-white"
               }`}
             >
-              {isListening ? "🎤 Parar Gravação" : "🎤 Iniciar Gravação"}
+              {isListening ? "🎤 Parar  Gravação" : "🎤 Iniciar Gravação"}
             </button>
           </div>
 
