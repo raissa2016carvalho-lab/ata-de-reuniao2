@@ -370,103 +370,83 @@ export default function Home() {
 
   // Download com UTF-8 BOM E SALVAR NO SUPABASE
   const handleDownload = async () => {
-    const presentationItems = checklist.filter((c) => c.type === "Apresentação");
-    const actionItems = checklist.filter((c) => c.type === "Ação");
-    const allItems = [...presentationItems, ...actionItems];
+  const presentationItems = checklist.filter((c) => c.type === "Apresentação");
+  const actionItems = checklist.filter((c) => c.type === "Ação");
+  const allItems = [...presentationItems, ...actionItems];
 
-    if (allItems.length === 0) {
-      alert("Adicione pelo menos uma apresentação ou ação antes de exportar");
-      return;
-    }
+  if (allItems.length === 0) {
+    alert("Adicione pelo menos uma apresentação ou ação antes de exportar");
+    return;
+  }
 
-    setIsSaving(true);
+  setIsSaving(true);
 
-    try {
-      const today = new Date();
-      const dueDate = new Date(today);
-      dueDate.setDate(dueDate.getDate() + 8);
+  try {
+    const today = new Date();
+    const dueDate = new Date(today);
+    dueDate.setDate(dueDate.getDate() + 8);
 
-      const formatDate = (d: Date) => d.toISOString().split("T")[0];
-      const formatDateBR = (d: Date) => {
-        const day = String(d.getDate()).padStart(2, "0");
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-      };
+    const formatDate = (d: Date) => d.toISOString().split("T")[0];
+    const formatDateBR = (d: Date) => {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
 
-      // Gerar CSV
-      let csv = '\ufeff"Entradas","Saídas: Decisões e ações","Responsável","Data","Status","Tempo"\n';
+    // Gerar CSV
+    let csv = '\ufeff"Entradas","Saídas: Decisões e ações","Responsável","Data","Status","Tempo"\n';
 
-      allItems.forEach((c) => {
-        const entrada = c.type;
-        const saidas = c.text;
-        const responsavel = c.area;
-        const data = formatDate(dueDate);
-        const status = c.done ? "Concluído" : "Pendente";
-        const tempo = c.time || "";
+    allItems.forEach((c) => {
+      const entrada = c.type;
+      const saidas = c.text;
+      const responsavel = c.area;
+      const data = formatDate(dueDate);
+      const status = c.done ? "Concluído" : "Pendente";
+      const tempo = c.time || "";
 
-        csv += `"${entrada}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
-      });
+      csv += `"${entrada}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
+    });
 
-      // Download do arquivo
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
-      a.click();
+    // Download do arquivo
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
+    a.click();
 
-      // Calcular estatísticas
-      const completedActions = actionItems.filter(c => c.done).length;
-      const pendingActions = actionItems.filter(c => !c.done).length;
+    // Calcular estatísticas
+    const completedActions = actionItems.filter(c => c.done).length;
+    const pendingActions = actionItems.filter(c => !c.done).length;
 
-      // SALVAR NO SUPABASE
-      const newMeeting = {
-  const newMeeting = {
-  id: `${formatDate(today)}-seguranca-${Date.now()}`,  // ✅ Único também!
-  date: formatDateBR(today),
-  presentations: data.length,
-  actions: actionsCount,
-  completed: completedActions,
-  pending: pendingActions,
-  csv_data: csv,
-  tipo: 'seguranca'
+    // SALVAR NO SUPABASE
+    const newMeeting = {
+      id: `${formatDate(today)}-seguranca-${Date.now()}`,
+      date: formatDateBR(today),
+      presentations: presentationItems.length,
+      actions: actionItems.length,
+      completed: completedActions,
+      pending: pendingActions,
+      csv_data: csv,
+      tipo: 'seguranca'
+    };
+
+    const { error } = await supabase
+      .from('meetings')
+      .insert([newMeeting]);
+
+    if (error) throw error;
+    
+    alert("✅ Reunião salva com sucesso!\n\nAcesse 'Registros Gerais' para ver o histórico.");
+
+  } catch (error) {
+    console.error('Erro ao salvar reunião:', error);
+    alert("❌ Erro ao salvar reunião no banco de dados. Verifique a conexão com o Supabase.");
+  } finally {
+    setIsSaving(false);
+  }
 };
 
-
-
-      // Verificar se já existe reunião com essa data
-      const { data: existingMeeting } = await supabase
-        .from('meetings')
-        .select('id')
-        .eq('id', newMeeting.id)
-        .single();
-
-      if (existingMeeting) {
-        // Atualizar reunião existente
-        const { error } = await supabase
-          .from('meetings')
-          .update(newMeeting)
-          .eq('id', newMeeting.id);
-
-        if (error) throw error;
-        alert("✅ Reunião atualizada com sucesso!\n\nAcesse 'Registros Gerais' para ver o histórico.");
-      } else {
-        // Inserir nova reunião
-        const { error } = await supabase
-          .from('meetings')
-          .insert([newMeeting]);
-
-        if (error) throw error;
-        alert("✅ Reunião salva com sucesso!\n\nAcesse 'Registros Gerais' para ver o histórico.");
-      }
-
-    } catch (error) {
-      console.error('Erro ao salvar reunião:', error);
-      alert("❌ Erro ao salvar reunião no banco de dados. Verifique a conexão com o Supabase.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const completedItems = checklist.filter((c) => c.done);
   const pendingItems = checklist.filter((c) => !c.done);
