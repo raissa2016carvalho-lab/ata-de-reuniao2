@@ -44,6 +44,7 @@ const VOICE_COMMANDS = [
   "é ação",
   "criar ação",
   "nova ação",
+  "anote"
 ];
 
 interface ChecklistItem {
