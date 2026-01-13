@@ -60,6 +60,9 @@ um dos seguintes COMANDOS DE VOZ:
 ❌ Se NÃO houver um desses comandos, NÃO registre absolutamente NADA.
 ❌ Mesmo que a frase contenha uma ação clara, ela deve ser ignorada sem o comando.
 ❌ Nunca infira intenção. Apenas registre quando o comando for explícito.
+preciso que sempre coloque um ponto final da frase se achar que cabe um ponto final
+nunca colocar um ponto final apos qualquer palavra chave
+e sempre anotar após palavra chave, nunca antes
 
 ════════════════════════════════════
 MISSÃO
