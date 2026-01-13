@@ -421,15 +421,17 @@ export default function Home() {
 
       // SALVAR NO SUPABASE
       const newMeeting = {
-  id: formatDate(today),
+  const newMeeting = {
+  id: `${formatDate(today)}-seguranca-${Date.now()}`,  // ✅ Único também!
   date: formatDateBR(today),
-  presentations: presentationItems.length,
-  actions: actionItems.length,
+  presentations: data.length,
+  actions: actionsCount,
   completed: completedActions,
   pending: pendingActions,
   csv_data: csv,
-  tipo: 'seguranca'  // 👈 PARA REUNIÕES DE SEGURANÇA
+  tipo: 'seguranca'
 };
+
 
 
       // Verificar se já existe reunião com essa data
