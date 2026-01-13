@@ -421,14 +421,16 @@ export default function Home() {
 
       // SALVAR NO SUPABASE
       const newMeeting = {
-        id: formatDate(today),
-        date: formatDateBR(today),
-        presentations: presentationItems.length,
-        actions: actionItems.length,
-        completed: completedActions,
-        pending: pendingActions,
-        csv_data: csv,
-      };
+  id: formatDate(today),
+  date: formatDateBR(today),
+  presentations: presentationItems.length,
+  actions: actionItems.length,
+  completed: completedActions,
+  pending: pendingActions,
+  csv_data: csv,
+  tipo: 'seguranca'  // 👈 PARA REUNIÕES DE SEGURANÇA
+};
+
 
       // Verificar se já existe reunião com essa data
       const { data: existingMeeting } = await supabase
