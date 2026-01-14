@@ -81,35 +81,48 @@ export default function Home() {
   const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
   const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
-  // Inicializar Web Speech API
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  if (typeof window !== "undefined") {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
       
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = "pt-BR";
+      // ✅ CONFIGURAÇÕES OTIMIZADAS
+      recognition.continuous = true;           // Gravação contínua
+      recognition.interimResults = true;       // Resultados em tempo real
+      recognition.lang = "pt-BR";              // Português brasileiro
+      recognition.maxAlternatives = 1;         // Apenas melhor resultado (mais rápido)
 
-        recognition.onresult = (event: any) => {
-          let interimTranscript = "";
-          let finalText = "";
+      // ⚡ REDUZIR LATÊNCIA - Processar mais rápido
+      let finalTimeout: NodeJS.Timeout;
 
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcriptPiece = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalText += transcriptPiece + " ";
-            } else {
-              interimTranscript += transcriptPiece;
-            }
-          }
+      recognition.onresult = (event: any) => {
+        // Limpar timeout anterior para processar imediatamente
+        clearTimeout(finalTimeout);
 
-          setLiveTranscript(interimTranscript);
+        let interimTranscript = "";
+        let finalText = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcriptPiece = event.results[i][0].transcript;
           
-          if (finalText) {
+          if (event.results[i].isFinal) {
+            finalText += transcriptPiece + " ";
+          } else {
+            interimTranscript += transcriptPiece;
+          }
+        }
+
+        // ✅ ATUALIZAR INTERIM IMEDIATAMENTE (sem delay)
+        setLiveTranscript(interimTranscript);
+        
+        // ✅ PROCESSAR FINAL COM DELAY MÍNIMO (100ms)
+        if (finalText) {
+          finalTimeout = setTimeout(() => {
             setTranscript(prev => prev + finalText);
             
+            // Detectar comandos de voz
             const lowerText = finalText.toLowerCase();
             const commandFound = VOICE_COMMANDS.find(cmd => lowerText.includes(cmd));
             
@@ -120,33 +133,70 @@ export default function Home() {
               
               if (textBeforeCommand.length > 5) {
                 setSuggestions(prev => [...prev, textBeforeCommand]);
-                console.log(`✅ Ação capturada: "${commandFound}"`);
+                console.log(`✅ Ação capturada pelo comando: "${commandFound}"`);
               }
             }
-          }
-        };
+          }, 100); // Delay mínimo de 100ms
+        }
+      };
 
-        recognition.onerror = (event: any) => {
-          console.error("Erro no reconhecimento:", event.error);
-          setIsListening(false);
-        };
+      // ✅ TRATAMENTO DE ERROS MELHORADO
+      recognition.onerror = (event: any) => {
+        console.error("Erro no reconhecimento:", event.error);
+        
+        // Mensagens específicas por tipo de erro
+        switch(event.error) {
+          case 'no-speech':
+            console.warn('⚠️ Nenhuma fala detectada. Fale mais alto ou próximo ao microfone.');
+            break;
+          case 'audio-capture':
+            alert('❌ Erro ao capturar áudio. Verifique as permissões do microfone.');
+            setIsListening(false);
+            break;
+          case 'not-allowed':
+            alert('❌ Permissão de microfone negada. Permita o acesso nas configurações do navegador.');
+            setIsListening(false);
+            break;
+          case 'network':
+            console.warn('⚠️ Erro de rede. Verifique sua conexão com a internet.');
+            break;
+          default:
+            console.error('❌ Erro desconhecido:', event.error);
+        }
+      };
 
-        recognition.onend = () => {
-          if (isListening) {
+      // ✅ AUTO-RESTART MELHORADO (reinicia automaticamente se parar)
+      recognition.onend = () => {
+        console.log('🔴 Reconhecimento finalizado');
+        if (isListening) {
+          console.log('🔄 Reiniciando reconhecimento...');
+          try {
             recognition.start();
+          } catch (error) {
+            console.error('❌ Erro ao reiniciar:', error);
+            setIsListening(false);
           }
-        };
+        }
+      };
 
-        recognitionRef.current = recognition;
-      }
+      // ✅ LOG QUANDO COMEÇA
+      recognition.onstart = () => {
+        console.log('🎤 Reconhecimento de voz iniciado');
+      };
+
+      recognitionRef.current = recognition;
+    } else {
+      console.error('❌ SpeechRecognition não suportado neste navegador. Use Google Chrome.');
+      alert('Seu navegador não suporta reconhecimento de voz. Use Google Chrome para melhor experiência.');
     }
+  }
 
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, [isListening]);
+  return () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+  };
+}, [isListening]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
