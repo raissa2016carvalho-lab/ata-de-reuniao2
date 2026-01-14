@@ -81,6 +81,41 @@ export default function Home() {
   const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
   const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
+  // 📝 Função para formatar texto automaticamente
+  const autoFormatText = (text: string): string => {
+    let formatted = text.trim();
+    
+    // Remover espaços múltiplos
+    formatted = formatted.replace(/\s+/g, ' ');
+    
+    // Primeira letra maiúscula
+    if (formatted.length > 0) {
+      formatted = formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    }
+    
+    // Adicionar vírgulas antes de conectores
+    const connectors = ['e ', 'mas ', 'porém ', 'então ', 'também ', 'além disso '];
+    connectors.forEach(connector => {
+      const regex = new RegExp(`\\s${connector}`, 'gi');
+      formatted = formatted.replace(regex, `, ${connector}`);
+    });
+    
+    // Adicionar ponto final se não tiver
+    if (!formatted.match(/[.!?]$/)) {
+      formatted += '.';
+    }
+    
+    // Maiúscula após pontos
+    formatted = formatted.replace(/([.!?])\s+([a-z])/g, (match, p1, p2) => {
+      return p1 + ' ' + p2.toUpperCase();
+    });
+    
+    // Adicionar espaço
+    formatted += ' ';
+    
+    return formatted;
+  };
+
   useEffect(() => {
   if (typeof window !== "undefined") {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -89,16 +124,14 @@ export default function Home() {
       const recognition = new SpeechRecognition();
       
       // ✅ CONFIGURAÇÕES OTIMIZADAS
-      recognition.continuous = true;           // Gravação contínua
-      recognition.interimResults = true;       // Resultados em tempo real
-      recognition.lang = "pt-BR";              // Português brasileiro
-      recognition.maxAlternatives = 1;         // Apenas melhor resultado (mais rápido)
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "pt-BR";
+      recognition.maxAlternatives = 1;
 
-      // ⚡ REDUZIR LATÊNCIA - Processar mais rápido
       let finalTimeout: NodeJS.Timeout;
 
       recognition.onresult = (event: any) => {
-        // Limpar timeout anterior para processar imediatamente
         clearTimeout(finalTimeout);
 
         let interimTranscript = "";
@@ -114,13 +147,13 @@ export default function Home() {
           }
         }
 
-        // ✅ ATUALIZAR INTERIM IMEDIATAMENTE (sem delay)
         setLiveTranscript(interimTranscript);
         
-        // ✅ PROCESSAR FINAL COM DELAY MÍNIMO (100ms)
         if (finalText) {
           finalTimeout = setTimeout(() => {
-            setTranscript(prev => prev + finalText);
+            // ✨ FORMATAÇÃO AUTOMÁTICA
+            const formattedText = autoFormatText(finalText);
+            setTranscript(prev => prev + formattedText);
             
             // Detectar comandos de voz
             const lowerText = finalText.toLowerCase();
@@ -136,15 +169,13 @@ export default function Home() {
                 console.log(`✅ Ação capturada pelo comando: "${commandFound}"`);
               }
             }
-          }, 100); // Delay mínimo de 100ms
+          }, 100);
         }
       };
 
-      // ✅ TRATAMENTO DE ERROS MELHORADO
       recognition.onerror = (event: any) => {
         console.error("Erro no reconhecimento:", event.error);
         
-        // Mensagens específicas por tipo de erro
         switch(event.error) {
           case 'no-speech':
             console.warn('⚠️ Nenhuma fala detectada. Fale mais alto ou próximo ao microfone.');
@@ -165,21 +196,33 @@ export default function Home() {
         }
       };
 
-      // ✅ AUTO-RESTART MELHORADO (reinicia automaticamente se parar)
+      // ✅ AUTO-RESTART FORÇADO
       recognition.onend = () => {
         console.log('🔴 Reconhecimento finalizado');
         if (isListening) {
-          console.log('🔄 Reiniciando reconhecimento...');
-          try {
-            recognition.start();
-          } catch (error) {
-            console.error('❌ Erro ao reiniciar:', error);
-            setIsListening(false);
-          }
+          console.log('🔄 Reiniciando automaticamente...');
+          setTimeout(() => {
+            try {
+              if (recognitionRef.current && isListening) {
+                recognitionRef.current.start();
+              }
+            } catch (error) {
+              console.error('❌ Erro ao reiniciar:', error);
+              setTimeout(() => {
+                try {
+                  if (recognitionRef.current && isListening) {
+                    recognitionRef.current.start();
+                  }
+                } catch (e) {
+                  console.error('❌ Falha definitiva:', e);
+                  setIsListening(false);
+                }
+              }, 500);
+            }
+          }, 100);
         }
       };
 
-      // ✅ LOG QUANDO COMEÇA
       recognition.onstart = () => {
         console.log('🎤 Reconhecimento de voz iniciado');
       };
@@ -418,7 +461,6 @@ export default function Home() {
     );
   };
 
-  // Download com UTF-8 BOM E SALVAR NO SUPABASE
   const handleDownload = async () => {
   const presentationItems = checklist.filter((c) => c.type === "Apresentação");
   const actionItems = checklist.filter((c) => c.type === "Ação");
@@ -444,7 +486,6 @@ export default function Home() {
       return `${day}/${month}/${year}`;
     };
 
-    // Gerar CSV
     let csv = '\ufeff"Entradas","Saídas: Decisões e ações","Responsável","Data","Status","Tempo"\n';
 
     allItems.forEach((c) => {
@@ -458,18 +499,15 @@ export default function Home() {
       csv += `"${entrada}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
     });
 
-    // Download do arquivo
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
     a.click();
 
-    // Calcular estatísticas
     const completedActions = actionItems.filter(c => c.done).length;
     const pendingActions = actionItems.filter(c => !c.done).length;
 
-    // SALVAR NO SUPABASE
     const newMeeting = {
       id: `${formatDate(today)}-seguranca-${Date.now()}`,
       date: formatDateBR(today),
@@ -504,7 +542,6 @@ export default function Home() {
   return (
     <div className="p-5 md:p-8">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
         <div className="bg-gradient-to-r from-[#1e3c72] to-[#2a5298] text-white py-6 px-8">
           <div className="flex items-center justify-between">
             <div className="text-left">
@@ -516,6 +553,12 @@ export default function Home() {
               </p>
             </div>
             <div className="hidden md:flex items-center gap-4">
+              <a
+                href="/"
+                className="px-6 py-3 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+              >
+                ← Voltar
+              </a>
               <a
                 href="/ata-reunioes"
                 className="px-6 py-3 bg-white text-[#1e3c72] font-semibold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
@@ -543,7 +586,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Ações da Reunião Anterior */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Ações da Reunião Anterior
@@ -595,7 +637,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Apresentação dos Números */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Apresentação dos Números de Segurança
@@ -641,7 +682,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Transcrição COM MICROFONE */}
         <section className="p-8 border-b border-gray-200">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-xl font-bold text-gray-800">
@@ -659,7 +699,6 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Transcrição ao vivo */}
           {isListening && (
             <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl">
               <p className="text-sm font-semibold text-blue-800 mb-2">
@@ -781,7 +820,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Checklist Final */}
         <section className="p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Checklist Final ({checklist.length} itens)
