@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { analyzeTranscript } from "./actions";
+import { analyzeTranscript } from "../actions";
 import { supabase } from "@/lib/supabase";
 
 const STATES = [
