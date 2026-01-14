@@ -5,6 +5,58 @@ const openai = new OpenAI({
   apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
 });
 
+// Função auxiliar para normalizar texto para comparação
+function normalizeForComparison(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '') // Remove pontuação
+    .replace(/\s+/g, ' ')    // Normaliza espaços
+    .trim();
+}
+
+// Função auxiliar para verificar similaridade semântica
+function areSimilarActions(action1: string, action2: string): boolean {
+  const norm1 = normalizeForComparison(action1);
+  const norm2 = normalizeForComparison(action2);
+  
+  // Se são idênticas após normalização
+  if (norm1 === norm2) return true;
+  
+  // Se uma contém a outra (mais de 80% de overlap)
+  const words1 = norm1.split(' ');
+  const words2 = norm2.split(' ');
+  
+  const commonWords = words1.filter(w => words2.includes(w));
+  const similarity = commonWords.length / Math.max(words1.length, words2.length);
+  
+  return similarity > 0.8;
+}
+
+// Função para remover duplicatas semânticas
+function removeSimilarDuplicates(actions: string[]): string[] {
+  const unique: string[] = [];
+  
+  for (const action of actions) {
+    const isDuplicate = unique.some(existing => 
+      areSimilarActions(action, existing)
+    );
+    
+    if (!isDuplicate) {
+      unique.push(action);
+    } else {
+      // Se for duplicata, mantém a versão mais completa
+      const existingIndex = unique.findIndex(existing => 
+        areSimilarActions(action, existing)
+      );
+      if (existingIndex >= 0 && action.length > unique[existingIndex].length) {
+        unique[existingIndex] = action;
+      }
+    }
+  }
+  
+  return unique;
+}
+
 export async function analyzeTranscript(
   transcript: string,
 ): Promise<{ actions: string[]; error?: string }> {
@@ -57,215 +109,152 @@ um dos seguintes COMANDOS DE VOZ:
 - "nova ação"
 - "anote"
 
-IMPORTANTE:
-- Se NÃO houver um desses comandos, NÃO registre absolutamente NADA.
-- Mesmo que a frase contenha uma ação clara, ela deve ser ignorada sem o comando.
-- Nunca infira intenção. Apenas registre quando o comando for explícito.
-
 ════════════════════════════════════
 LIMPEZA OBRIGATÓRIA DOS COMANDOS
 ════════════════════════════════════
 
-Ao extrair a ação, você DEVE:
+CRÍTICO: Você DEVE REMOVER COMPLETAMENTE o comando de voz da ação final.
 
-1. ❌ REMOVER COMPLETAMENTE o comando de voz da ação
-   - NÃO inclua "anotar na ata", "anota aí", "registrar na ata", etc.
-   - A ação final NÃO pode conter essas palavras-chave.
-   - REMOVA também variações como "anote", "registre", "coloque na ata"
+Exemplos:
+❌ ERRADO: "anota aí ir para Bahia"
+✅ CORRETO: "Ir para Bahia."
 
-2. ✅ CAPTURAR APENAS o conteúdo da ação após o comando
-
-Exemplos de limpeza:
-┌─────────────────────────────────────────────────────────────────────┐
-│ Entrada: "João: anota aí revisar os EPIs do setor 3 até sexta"     │
-│ ❌ ERRADO: "anota aí revisar os EPIs do setor 3 até sexta"          │
-│ ✅ CORRETO: "João: revisar os EPIs do setor 3 até sexta."           │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│ Entrada: "Maria: registrar na ata enviar relatório até amanhã"     │
-│ ❌ ERRADO: "registrar na ata enviar relatório até amanhã"           │
-│ ✅ CORRETO: "Maria: enviar relatório até amanhã."                   │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│ Entrada: "isso é ata verificar extintores da obra 5"               │
-│ ❌ ERRADO: "isso é ata verificar extintores da obra 5"              │
-│ ✅ CORRETO: "Verificar extintores da obra 5."                       │
-└─────────────────────────────────────────────────────────────────────┘
+❌ ERRADO: "registrar na ata verificar extintores"
+✅ CORRETO: "Verificar extintores."
 
 ════════════════════════════════════
-FORMATAÇÃO E ESTRUTURA
+DEDUPLICAÇÃO SEMÂNTICA RIGOROSA
 ════════════════════════════════════
 
-Cada ação deve ser:
+MUITO IMPORTANTE: Se houver múltiplas menções da MESMA ação (mesmo com palavras diferentes), registre APENAS UMA VEZ.
 
-1. 📝 BEM FORMATADA
-   - Iniciar com letra MAIÚSCULA (ou nome próprio se houver responsável)
-   - Terminar SEMPRE com ponto final (.)
-   - Usar vírgulas quando apropriado para separar informações
-   - Máximo de 25 palavras por ação
+Exemplos de DUPLICATAS que devem ser UNIFICADAS:
 
-2. 🎯 CLARA E OBJETIVA
-   - Verbo de ação + complemento
-   - Se houver nome do responsável no início, manter: "Nome: verbo..."
-   - Incluir prazo se mencionado
-   - Incluir local/setor se mencionado
+❌ NÃO FAZER ISSO:
+- "Ir para Bahia"
+- "Registrar que eu vou para Bahia"  
+- "Ir para Bahia"
+- "Que vou para Bahia"
 
-3. ✨ PROFISSIONAL
-   - Texto coeso e natural
-   - Sem comandos de voz
-   - Sem redundâncias
-   - Tom formal e direto
+✅ FAZER ISSO (apenas UMA ação):
+- "Ir para Bahia."
 
-════════════════════════════════════
-REGRAS DE CONTEÚDO
-════════════════════════════════════
+Outro exemplo:
 
-1. 🔁 NUNCA repetir ações
-   - Se a mesma ação for marcada mais de uma vez, registre APENAS UMA VEZ
-   - Sempre escolha a versão MAIS COMPLETA e CLARA
+❌ NÃO FAZER ISSO:
+- "Verificar extintores"
+- "Checar os extintores"
+- "Conferir extintores"
 
-2. 👤 Responsáveis
-   - Identifique o responsável SOMENTE se houver nome explícito ANTES do comando
-   - Formato: "Nome: ação."
-   - Nunca invente ou assuma nomes
-
-3. ⏰ Prazos
-   - Inclua prazos sempre que mencionados:
-     "até sexta", "amanhã", "próxima semana", "até o fim do mês"
-
-4. 📍 Local / Área
-   - Inclua setor, estado, unidade, obra ou área sempre que citados
-
-5. 🛠️ Verbos de ação obrigatórios
-   - Priorize verbos como:
-     revisar, verificar, enviar, agendar, atualizar, corrigir,
-     solicitar, implementar, validar, acompanhar, conferir
-
-6. 🧹 Limpeza total
-   - Ignore conversas informais
-   - Ignore comentários que não sejam ações
-   - Ignore justificativas ou opiniões
+✅ FAZER ISSO (apenas UMA ação):
+- "Verificar extintores."
 
 ════════════════════════════════════
-FORMATO DE SAÍDA (OBRIGATÓRIO)
+FORMATAÇÃO OBRIGATÓRIA
 ════════════════════════════════════
 
-Retorne EXCLUSIVAMENTE um JSON válido, sem texto adicional:
+TODA ação deve seguir este formato EXATO:
+
+1. ✅ Começar com letra MAIÚSCULA
+2. ✅ Terminar com ponto final (.)
+3. ✅ Usar vírgulas quando houver múltiplas informações
+4. ✅ Máximo 25 palavras
+
+Exemplos corretos:
+✅ "Verificar extintores do setor 3."
+✅ "João: enviar relatório até sexta-feira."
+✅ "Agendar reunião com equipe de segurança na próxima semana."
+
+Exemplos ERRADOS:
+❌ "verificar extintores" (sem maiúscula, sem ponto)
+❌ "Verificar extintores" (sem ponto final)
+❌ "verificar extintores." (sem maiúscula)
+
+════════════════════════════════════
+ESTRUTURA DE AÇÃO COMPLETA
+════════════════════════════════════
+
+Quando possível, inclua:
+
+1. 👤 Responsável (se mencionado): "Nome: ação."
+2. 🎯 O que fazer (verbo + complemento)
+3. 📍 Onde (local/setor se mencionado)
+4. ⏰ Quando (prazo se mencionado)
+
+Exemplo completo:
+"João: verificar extintores do setor 3, obra 5, até sexta-feira."
+
+════════════════════════════════════
+FORMATO DE SAÍDA
+════════════════════════════════════
+
+Retorne EXCLUSIVAMENTE um JSON válido:
 
 {
   "actions": [
-    "ação 1",
-    "ação 2",
-    "ação 3"
+    "Ação 1.",
+    "Ação 2.",
+    "Ação 3."
   ]
 }
+
+IMPORTANTE:
+- Cada ação DEVE terminar com ponto final
+- Sem comandos de voz
+- Sem duplicatas semânticas
+- Máximo 25 palavras por ação
 
 ════════════════════════════════════
 EXEMPLOS COMPLETOS
 ════════════════════════════════════
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ Entrada:                                                            │
-│ "João: precisamos revisar os EPIs do setor 3"                       │
-│                                                                     │
-│ Saída:                                                              │
-│ {                                                                   │
-│   "actions": []                                                     │
-│ }                                                                   │
-│                                                                     │
-│ Motivo: Sem comando de voz                                          │
-└─────────────────────────────────────────────────────────────────────┘
+Entrada:
+"João: anota aí ir para Bahia verificar obra nova."
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ Entrada:                                                            │
-│ "João: anota aí revisar os EPIs do setor 3 até sexta"              │
-│                                                                     │
-│ Saída:                                                              │
-│ {                                                                   │
-│   "actions": [                                                      │
-│     "João: revisar EPIs do setor 3 até sexta."                     │
-│   ]                                                                 │
-│ }                                                                   │
-└─────────────────────────────────────────────────────────────────────┘
+Saída:
+{
+  "actions": [
+    "João: ir para Bahia verificar obra nova."
+  ]
+}
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ Entrada:                                                            │
-│ "Maria: isso é ata agendar treinamento de NR35 para próxima semana"│
-│                                                                     │
-│ Saída:                                                              │
-│ {                                                                   │
-│   "actions": [                                                      │
-│     "Maria: agendar treinamento de NR35 para próxima semana."      │
-│   ]                                                                 │
-│ }                                                                   │
-└─────────────────────────────────────────────────────────────────────┘
+---
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ Entrada:                                                            │
-│ "Carlos: registrar na ata verificar extintores obra 5 e sala 12"   │
-│                                                                     │
-│ Saída:                                                              │
-│ {                                                                   │
-│   "actions": [                                                      │
-│     "Carlos: verificar extintores da obra 5 e sala 12."            │
-│   ]                                                                 │
-│ }                                                                   │
-└─────────────────────────────────────────────────────────────────────┘
+Entrada:
+"Maria: registrar na ata enviar relatório até amanhã."
+"Pedro: também anota aí o relatório precisa ser enviado amanhã."
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ Entrada:                                                            │
-│ "anote enviar relatório semanal até amanhã"                        │
-│                                                                     │
-│ Saída:                                                              │
-│ {                                                                   │
-│   "actions": [                                                      │
-│     "Enviar relatório semanal até amanhã."                         │
-│   ]                                                                 │
-│ }                                                                   │
-│                                                                     │
-│ Observação: Sem responsável identificado, inicia com maiúscula     │
-└─────────────────────────────────────────────────────────────────────┘
+Saída (OBSERVE: só uma ação, pois são duplicatas):
+{
+  "actions": [
+    "Maria: enviar relatório até amanhã."
+  ]
+}
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ Entrada:                                                            │
-│ "João: anota aí revisar EPIs setor 3"                              │
-│ "Maria: também registra na ata revisar EPIs setor 3"               │
-│                                                                     │
-│ Saída:                                                              │
-│ {                                                                   │
-│   "actions": [                                                      │
-│     "João: revisar EPIs do setor 3."                               │
-│   ]                                                                 │
-│ }                                                                   │
-│                                                                     │
-│ Observação: Ações duplicadas registradas apenas uma vez            │
-└─────────────────────────────────────────────────────────────────────┘
+---
 
-════════════════════════════════════
-CHECKLIST FINAL ANTES DE RETORNAR
-════════════════════════════════════
+Entrada:
+"anote verificar extintores"
+"também registra na ata conferir os extintores do setor 3"
 
-Para cada ação extraída, verifique:
-
-☑️ Removeu completamente o comando de voz?
-☑️ Começa com letra maiúscula (ou nome próprio)?
-☑️ Termina com ponto final?
-☑️ Tem vírgulas onde necessário?
-☑️ Está clara e objetiva?
-☑️ Não está duplicada?
-☑️ Tem no máximo 25 palavras?
-☑️ Inclui prazo (se mencionado)?
-☑️ Inclui local/setor (se mencionado)?
-☑️ Está em formato JSON válido?`,
+Saída (OBSERVE: só uma ação, pois são duplicatas semânticas):
+{
+  "actions": [
+    "Verificar extintores do setor 3."
+  ]
+}`,
         },
         {
           role: "user",
-          content: `Analise esta transcrição e extraia TODAS as ações ÚNICAS (sem repetições), já formatadas e SEM os comandos de voz:\n\n${transcript}`,
+          content: `Analise esta transcrição e extraia TODAS as ações ÚNICAS (elimine duplicatas semânticas). 
+
+IMPORTANTE: Se a mesma ação foi mencionada várias vezes com palavras diferentes, registre apenas UMA VEZ (a versão mais completa).
+
+Transcrição:
+${transcript}`,
         },
       ],
-      temperature: 0.2,
+      temperature: 0.1, // Mais conservador para consistência
       max_tokens: 1500,
     });
 
@@ -279,11 +268,11 @@ Para cada ação extraída, verifique:
 
     const result = JSON.parse(responseText);
     
-    // Validação e limpeza adicional no backend (segurança extra)
-    const cleanedActions = (result.actions || []).map((action: string) => {
+    // Validação e limpeza adicional no backend
+    let cleanedActions = (result.actions || []).map((action: string) => {
       let cleaned = action.trim();
       
-      // Lista de comandos para remover (caso a IA não tenha removido)
+      // Lista de comandos para remover
       const commandsToRemove = [
         /^anotar na ata:?\s*/gi,
         /^anotar ata:?\s*/gi,
@@ -314,6 +303,8 @@ Para cada ação extraída, verifique:
         /^criar ação:?\s*/gi,
         /^nova ação:?\s*/gi,
         /^anote:?\s*/gi,
+        /^que\s+/gi, // Remove "que" no início (ex: "que vou para Bahia")
+        /^registrar\s+que\s+/gi, // Remove "registrar que"
       ];
 
       // Remover todos os comandos
@@ -332,7 +323,10 @@ Para cada ação extraída, verifique:
       }
 
       return cleaned;
-    }).filter((action: string) => action.length > 3); // Filtrar ações muito curtas
+    }).filter((action: string) => action.length > 3);
+
+    // Remover duplicatas semânticas (proteção extra)
+    cleanedActions = removeSimilarDuplicates(cleanedActions);
 
     return { actions: cleanedActions };
   } catch (error) {
@@ -347,7 +341,7 @@ Para cada ação extraída, verifique:
   }
 }
 
-// Nova função para formatar a transcrição completa com parágrafos e pontuação
+// Função para formatar a transcrição completa
 export async function formatTranscript(
   transcript: string,
 ): Promise<{ formattedText: string; error?: string }> {
@@ -364,46 +358,34 @@ export async function formatTranscript(
           content: `Você é um assistente especializado em formatar transcrições de reuniões.
 
 MISSÃO:
-Transformar uma transcrição bruta em um texto profissional, bem estruturado e legível.
+Transformar uma transcrição bruta em um texto profissional e bem estruturado.
 
-REGRAS DE FORMATAÇÃO:
+REGRAS:
 
 1. 📝 PONTUAÇÃO
-   - Adicione vírgulas, pontos finais, pontos de interrogação onde apropriado
-   - Use dois-pontos (:) para introduzir listas ou explicações
-   - Use ponto e vírgula (;) para separar ideias relacionadas
+   - Adicione vírgulas, pontos finais, pontos de interrogação
+   - Use dois-pontos para listas
+   - Use ponto e vírgula para ideias relacionadas
 
 2. 📋 PARÁGRAFOS
-   - Crie parágrafos lógicos quando o assunto mudar
-   - Máximo de 4-5 frases por parágrafo
-   - Deixe uma linha em branco entre parágrafos
+   - Crie parágrafos quando o assunto mudar
+   - Máximo 4-5 frases por parágrafo
+   - Linha em branco entre parágrafos
 
 3. ✨ ESTRUTURA
-   - Mantenha a ordem cronológica da conversa
+   - Mantenha ordem cronológica
    - Agrupe falas sobre o mesmo tópico
-   - Identifique mudanças de assunto
 
-4. 🎯 CLAREZA
-   - Corrija erros óbvios de transcrição (mas mantenha o conteúdo)
-   - Transforme fragmentos em frases completas
-   - Mantenha o significado original
-
-5. 👤 SPEAKERS
-   - Se houver nomes mencionados, mantenha o formato "Nome: fala"
-   - Se não houver identificação, apenas formate o texto
-
-6. 🚫 O QUE NÃO FAZER
+4. 🚫 NÃO FAZER
    - Não invente informações
    - Não remova conteúdo importante
-   - Não altere o significado
-   - Não adicione interpretações
+   - Não altere significado
 
-FORMATO DE SAÍDA:
-Retorne apenas o texto formatado, sem JSON, sem marcações especiais.`,
+SAÍDA: Apenas o texto formatado, sem JSON.`,
         },
         {
           role: "user",
-          content: `Formate esta transcrição adicionando pontuação, vírgulas, pontos finais e estruturando em parágrafos:\n\n${transcript}`,
+          content: `Formate esta transcrição com pontuação, vírgulas, pontos e parágrafos:\n\n${transcript}`,
         },
       ],
       temperature: 0.3,
@@ -414,7 +396,7 @@ Retorne apenas o texto formatado, sem JSON, sem marcações especiais.`,
     
     return { formattedText };
   } catch (error) {
-    console.error("Erro ao formatar transcrição:", error);
+    console.error("Erro ao formatar:", error);
     return {
       formattedText: transcript,
       error: "Erro ao formatar. Mantendo texto original.",
