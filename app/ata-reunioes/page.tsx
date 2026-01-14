@@ -18,6 +18,7 @@ const DEFAULT_AREAS = [
   "MARKETING",
   "OPERAÇÃO",
   "PLANEJAMENTO",
+  "SESMT",
   "CONVIDADO EXTERNO",
 ];
 
