@@ -400,34 +400,37 @@ export default function AtaReunioes() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `ATA_REUNIAO_${formatDate(today)}.csv`;
+    a.download = `ATA_REUNIAO_GERAL_${formatDate(today)}.csv`;
     a.click();
 
+    // ✅ SALVAR NO SUPABASE - TABELA CORRETA: meetings_general
     try {
       const completedActions = checklist.filter(c => c.done).length;
       const pendingActions = checklist.filter(c => !c.done).length;
 
-     const newMeeting = {
-  id: `${formatDate(today)}-outras-${Date.now()}`,  // ✅ Agora é único!
-  date: formatDateBR(today),
-  presentations: 0,
-  actions: checklist.length,
-  completed: completedActions,
-  pending: pendingActions,
-  csv_data: csv,
-  tipo: 'outras'
-};
-
+      const newMeeting = {
+        id: `geral-${formatDate(today)}-${Date.now()}`,
+        date: formatDateBR(today),
+        participants: participants,
+        objetivo: objetivo || null,
+        pauta: pautaPreenchida,
+        transcript: transcript || null,
+        actions: checklist,
+        total_actions: checklist.length,
+        completed_actions: completedActions,
+        pending_actions: pendingActions,
+        csv_data: csv,
+      };
 
       const { data: existingMeeting } = await supabase
-        .from('meetings')
+        .from('meetings_general')
         .select('id')
         .eq('id', newMeeting.id)
         .single();
 
       if (existingMeeting) {
         const { error } = await supabase
-          .from('meetings')
+          .from('meetings_general')
           .update(newMeeting)
           .eq('id', newMeeting.id);
 
@@ -435,7 +438,7 @@ export default function AtaReunioes() {
         alert("✅ Ata atualizada com sucesso no banco de dados!");
       } else {
         const { error } = await supabase
-          .from('meetings')
+          .from('meetings_general')
           .insert([newMeeting]);
 
         if (error) throw error;
@@ -462,6 +465,7 @@ export default function AtaReunioes() {
     newItems[index] = value;
     setPautaItems(newItems);
   };
+
   return (
     <div className="p-5 md:p-8">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
@@ -497,6 +501,12 @@ export default function AtaReunioes() {
               >
                 📋 {showPauta ? "Ocultar Pauta" : "Incluir Pauta"}
               </button>
+              <a
+                href="/registros-gerais"
+                className="px-6 py-3 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+              >
+                📋 Ver Registros
+              </a>
               <a
                 href="/"
                 className="px-6 py-3 bg-white text-[#1e3c72] font-semibold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
