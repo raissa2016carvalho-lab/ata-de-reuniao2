@@ -70,6 +70,9 @@ export default function AtaReunioes() {
   // ✅ NOVO: Estados para edição de sugestões
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingText, setEditingText] = useState("");
+  
+  // ✅ NOVO: Estado para visualização da transcrição
+  const [showTranscript, setShowTranscript] = useState(false);
 
   const availableResponsibles = [
     ...participants.map(p => `${p.name} (${p.area})`),
@@ -266,23 +269,49 @@ export default function AtaReunioes() {
     setIsAnalyzing(true);
     setAnalysisMessage("IA está analisando a transcrição...");
 
-    const result = await analyzeTranscript(transcript);
-
-    if (result.error) {
-      setAnalysisMessage(`Erro: ${result.error}`);
-    } else if (result.actions.length === 0) {
-      setAnalysisMessage("Nenhuma ação identificada na transcrição");
-    } else {
-      setSuggestions(prev => {
-        const existingActions = new Set(prev.map(a => a.toLowerCase().trim()));
-        const newActions = result.actions.filter(
-          action => !existingActions.has(action.toLowerCase().trim())
-        );
-        return [...prev, ...newActions];
-      });
-      setAnalysisMessage(`✅ ${result.actions.length} novas ações identificadas!`);
-      setTimeout(() => setAnalysisMessage(""), 2000);
+    // ✅ FILTRAR APENAS TRECHOS COM O COMANDO ESPECÍFICO
+    const lowerText = transcript.toLowerCase();
+    const commandRegex = /preciso que registre em ata/gi;
+    
+    if (!commandRegex.test(lowerText)) {
+      setAnalysisMessage("⚠️ Nenhum comando 'preciso que registre em ata' encontrado na transcrição");
+      setIsAnalyzing(false);
+      setTimeout(() => setAnalysisMessage(""), 3000);
+      return;
     }
+
+    // Extrair apenas os trechos ANTES de cada comando
+    const parts = transcript.split(/preciso que registre em ata/gi);
+    const actionsFromCommands: string[] = [];
+    
+    // Pega o texto antes de cada comando (exceto a primeira parte)
+    for (let i = 0; i < parts.length - 1; i++) {
+      const sentences = parts[i].split(/[.!?]+/).filter(s => s.trim().length > 0);
+      if (sentences.length > 0) {
+        const lastSentence = sentences[sentences.length - 1].trim();
+        if (lastSentence.length > 10) {
+          actionsFromCommands.push(lastSentence);
+        }
+      }
+    }
+
+    if (actionsFromCommands.length === 0) {
+      setAnalysisMessage("⚠️ Nenhuma ação clara encontrada antes dos comandos");
+      setIsAnalyzing(false);
+      setTimeout(() => setAnalysisMessage(""), 3000);
+      return;
+    }
+
+    setSuggestions(prev => {
+      const existingActions = new Set(prev.map(a => a.toLowerCase().trim()));
+      const newActions = actionsFromCommands.filter(
+        action => !existingActions.has(action.toLowerCase().trim())
+      );
+      return [...prev, ...newActions];
+    });
+    
+    setAnalysisMessage(`✅ ${actionsFromCommands.length} ações capturadas pelos comandos!`);
+    setTimeout(() => setAnalysisMessage(""), 2000);
 
     setIsAnalyzing(false);
   };
@@ -951,6 +980,108 @@ export default function AtaReunioes() {
             </div>
           </div>
         </section>
+
+        {/* ✅ NOVA SEÇÃO: Visualização da Transcrição */}
+        {transcript.trim() && (
+          <section className="p-8 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
+            <div className="max-w-5xl mx-auto">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-4xl">📝</span>
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-800">Transcrição Completa da Reunião</h3>
+                    <p className="text-sm text-gray-600">
+                      {transcript.split(' ').length} palavras • {Math.ceil(transcript.length / 500)} minutos de leitura
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowTranscript(!showTranscript)}
+                  className={`px-6 py-3 font-semibold rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 ${
+                    showTranscript 
+                      ? "bg-purple-600 text-white" 
+                      : "bg-white text-purple-600 border-2 border-purple-600"
+                  }`}
+                >
+                  {showTranscript ? "🔼 Ocultar Transcrição" : "🔽 Ver Transcrição Completa"}
+                </button>
+              </div>
+
+              {showTranscript && (
+                <div className="bg-white rounded-xl shadow-lg overflow-hidden border-2 border-purple-200">
+                  <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-lg font-bold">📄 Texto Completo</h4>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(transcript);
+                          alert("✅ Transcrição copiada para a área de transferência!");
+                        }}
+                        className="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg text-sm font-semibold transition-all"
+                      >
+                        📋 Copiar Texto
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="p-6">
+                    <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-6 max-h-96 overflow-y-auto border border-gray-200">
+                      <div className="prose prose-sm max-w-none">
+                        {transcript.split('\n\n').map((paragraph, idx) => (
+                          <p key={idx} className="text-gray-700 leading-relaxed mb-4 text-justify">
+                            {paragraph.split('\n').map((line, lineIdx) => (
+                              <span key={lineIdx}>
+                                {line}
+                                {lineIdx < paragraph.split('\n').length - 1 && <br />}
+                              </span>
+                            ))}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 flex gap-3">
+                      <div className="flex-1 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-2xl">📊</span>
+                          <span className="font-bold text-blue-900">Estatísticas</span>
+                        </div>
+                        <div className="space-y-1 text-sm text-blue-800">
+                          <p>• <strong>{transcript.split(' ').length}</strong> palavras</p>
+                          <p>• <strong>{transcript.split('\n').filter(l => l.trim()).length}</strong> linhas</p>
+                          <p>• <strong>{transcript.length}</strong> caracteres</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex-1 bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-2xl">✅</span>
+                          <span className="font-bold text-green-900">Ações Capturadas</span>
+                        </div>
+                        <div className="space-y-1 text-sm text-green-800">
+                          <p>• <strong>{suggestions.length}</strong> ações identificadas</p>
+                          <p>• <strong>{checklist.length}</strong> ações aprovadas</p>
+                          <p>• <strong>{suggestions.length + checklist.length}</strong> total</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex-1 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-2xl">🎤</span>
+                          <span className="font-bold text-amber-900">Comandos</span>
+                        </div>
+                        <div className="space-y-1 text-sm text-amber-800">
+                          <p>• Comando usado:</p>
+                          <p className="font-semibold">"preciso que registre em ata"</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Checklist Final */}
         <section className="p-8">
