@@ -22,35 +22,9 @@ const DEFAULT_AREAS = [
   "CONVIDADO EXTERNO",
 ];
 
+// ✅ COMANDO ÚNICO E ESPECÍFICO - SÓ ESTE CRIA AÇÕES
 const VOICE_COMMANDS = [
-  "anotar na ata",
-  "anotar ata",
-  "escrever na ata",
-  "escreva na ata",
-  "anote aí",
-  "anota aí",
-  "registrar na ata",
-  "registre na ata",
-  "adicionar na ata",
-  "adicione na ata",
-  "incluir na ata",
-  "inclua na ata",
-  "salvar na ata",
-  "salve na ata",
-  "gravar na ata",
-  "grave na ata",
-  "colocar na ata",
-  "coloque na ata",
-  "inserir na ata",
-  "insira na ata",
-  "ação para ata",
-  "item para ata",
-  "ponto de ata",
-  "vai para ata",
-  "isso é ata",
-  "é ação",
-  "criar ação",
-  "nova ação",
+  "preciso que registre em ata",
 ];
 
 interface ChecklistItem {
@@ -93,6 +67,10 @@ export default function AtaReunioes() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
 
+  // ✅ NOVO: Estados para edição de sugestões
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState("");
+
   const availableResponsibles = [
     ...participants.map(p => `${p.name} (${p.area})`),
     ...DEFAULT_AREAS
@@ -123,9 +101,11 @@ export default function AtaReunioes() {
 
           setLiveTranscript(interimTranscript);
           
+          // ✅ ADICIONA TUDO NA TRANSCRIÇÃO (independente de ser ação)
           if (finalText) {
             setTranscript(prev => prev + finalText);
             
+            // ✅ SÓ CAPTURA AÇÃO COM O COMANDO ESPECÍFICO
             const lowerText = finalText.toLowerCase();
             const commandFound = VOICE_COMMANDS.find(cmd => lowerText.includes(cmd));
             
@@ -134,9 +114,10 @@ export default function AtaReunioes() {
               const parts = finalText.split(regex);
               const textBeforeCommand = parts[0].trim();
               
+              // ✅ CAPTURA O TEXTO **ANTES** DO COMANDO
               if (textBeforeCommand.length > 5) {
                 setSuggestions(prev => [...prev, textBeforeCommand]);
-                console.log(`✅ Ação capturada pelo comando: "${commandFound}"`);
+                console.log(`✅ Ação capturada: "${textBeforeCommand}"`);
               }
             }
           }
@@ -313,6 +294,39 @@ export default function AtaReunioes() {
     }
   };
 
+  // ✅ NOVO: Função para REPROVAR/REMOVER ação
+  const handleRejectSuggestion = (index: number) => {
+    setSuggestions((prev) => prev.filter((_, i) => i !== index));
+    setSelectedAreas((prev) => {
+      const newAreas = { ...prev };
+      delete newAreas[index];
+      return newAreas;
+    });
+  };
+
+  // ✅ NOVO: Função para iniciar EDIÇÃO
+  const handleStartEdit = (index: number) => {
+    setEditingIndex(index);
+    setEditingText(suggestions[index]);
+  };
+
+  // ✅ NOVO: Função para SALVAR edição
+  const handleSaveEdit = (index: number) => {
+    if (editingText.trim()) {
+      setSuggestions((prev) => 
+        prev.map((item, i) => (i === index ? editingText.trim() : item))
+      );
+    }
+    setEditingIndex(null);
+    setEditingText("");
+  };
+
+  // ✅ NOVO: Função para CANCELAR edição
+  const handleCancelEdit = () => {
+    setEditingIndex(null);
+    setEditingText("");
+  };
+
   const handleApprove = (index: number) => {
     const action = suggestions[index];
     const area = selectedAreas[index] || availableResponsibles[0];
@@ -404,7 +418,7 @@ export default function AtaReunioes() {
     a.download = `ATA_REUNIAO_GERAL_${formatDate(today)}.csv`;
     a.click();
 
-    // ✅ SALVAR NO SUPABASE - TABELA CORRETA: meetings_general
+    // ✅ SALVAR NO SUPABASE
     try {
       const completedActions = checklist.filter(c => c.done).length;
       const pendingActions = checklist.filter(c => !c.done).length;
@@ -761,16 +775,16 @@ export default function AtaReunioes() {
           {isListening && (
             <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl">
               <p className="text-sm font-semibold text-blue-800 mb-2">
-                🔴 Gravando... Use um dos comandos abaixo para capturar ações:
+                🔴 Gravando... Para registrar uma ação, fale:
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
-                {VOICE_COMMANDS.slice(0, 10).map((cmd, i) => (
-                  <span key={i} className="px-2 py-1 bg-blue-200 text-blue-900 text-xs rounded-full">
-                    "{cmd}"
-                  </span>
-                ))}
-                <span className="text-xs text-blue-700 italic">...e mais {VOICE_COMMANDS.length - 10} comandos</span>
+                <span className="px-3 py-1.5 bg-blue-600 text-white text-sm font-bold rounded-full">
+                  "preciso que registre em ata"
+                </span>
               </div>
+              <p className="text-xs text-blue-700 mt-3 italic">
+                ⚠️ Apenas este comando criará ações. Todo o resto será apenas transcrito.
+              </p>
               <p className="text-gray-700 italic mt-3 font-semibold">
                 {liveTranscript || "Aguardando fala..."}
               </p>
@@ -827,7 +841,7 @@ export default function AtaReunioes() {
               )}
               {suggestions.length === 0 && !analysisMessage ? (
                 <p className="text-center py-5 text-gray-500">
-                  As ações aparecerão aqui (IA automática + comando de voz + manual)
+                  As ações aparecerão aqui quando você falar "preciso que registre em ata"
                 </p>
               ) : (
                 <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-xl">
@@ -837,14 +851,42 @@ export default function AtaReunioes() {
                         <th className="px-3 py-2 text-left font-semibold text-gray-700">#</th>
                         <th className="px-3 py-2 text-left font-semibold text-gray-700">Ação</th>
                         <th className="px-3 py-2 text-left font-semibold text-gray-700">Responsável</th>
-                        <th className="px-3 py-2 text-center font-semibold text-gray-700">Aprovar</th>
+                        <th className="px-3 py-2 text-center font-semibold text-gray-700">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {suggestions.map((suggestion, i) => (
                         <tr key={i} className="hover:bg-gray-50">
                           <td className="px-3 py-2 text-gray-600 align-top">{i + 1}</td>
-                          <td className="px-3 py-2 text-gray-800 align-top text-xs">{suggestion}</td>
+                          <td className="px-3 py-2 text-gray-800 align-top text-xs">
+                            {editingIndex === i ? (
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={editingText}
+                                  onChange={(e) => setEditingText(e.target.value)}
+                                  className="flex-1 p-2 border-2 border-blue-400 rounded-lg text-sm focus:outline-none focus:border-blue-600"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => handleSaveEdit(i)}
+                                  className="px-3 py-1 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700"
+                                  title="Salvar edição"
+                                >
+                                  ✓
+                                </button>
+                                <button
+                                  onClick={handleCancelEdit}
+                                  className="px-3 py-1 bg-gray-400 text-white text-xs font-semibold rounded-lg hover:bg-gray-500"
+                                  title="Cancelar edição"
+                                >
+                                  ✖
+                                </button>
+                              </div>
+                            ) : (
+                              suggestion
+                            )}
+                          </td>
                           <td className="px-3 py-2 align-top">
                             <select
                               value={selectedAreas[i] || availableResponsibles[0]}
@@ -855,6 +897,7 @@ export default function AtaReunioes() {
                                 }))
                               }
                               className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                              disabled={editingIndex === i}
                             >
                               {participants.length > 0 && (
                                 <optgroup label="👥 Participantes">
@@ -873,12 +916,31 @@ export default function AtaReunioes() {
                             </select>
                           </td>
                           <td className="px-3 py-2 text-center align-top">
-                            <button
-                              onClick={() => handleApprove(i)}
-                              className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-all"
-                            >
-                              Aprovar
-                            </button>
+                            {editingIndex === i ? null : (
+                              <div className="flex gap-1 justify-center">
+                                <button
+                                  onClick={() => handleStartEdit(i)}
+                                  className="px-2 py-1 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition-all"
+                                  title="Editar ação"
+                                >
+                                  ✏️
+                                </button>
+                                <button
+                                  onClick={() => handleApprove(i)}
+                                  className="px-2 py-1 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-all"
+                                  title="Aprovar ação"
+                                >
+                                  ✓
+                                </button>
+                                <button
+                                  onClick={() => handleRejectSuggestion(i)}
+                                  className="px-2 py-1 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 transition-all"
+                                  title="Reprovar/Remover ação"
+                                >
+                                  ✖
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       ))}
