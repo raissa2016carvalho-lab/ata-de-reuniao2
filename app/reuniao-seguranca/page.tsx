@@ -321,23 +321,49 @@ export default function Home() {
     setIsAnalyzing(true);
     setAnalysisMessage("IA está analisando a transcrição...");
 
-    const result = await analyzeTranscript(transcript);
-
-    if (result.error) {
-      setAnalysisMessage(`Erro: ${result.error}`);
-    } else if (result.actions.length === 0) {
-      setAnalysisMessage("Nenhuma ação identificada na transcrição");
-    } else {
-      setSuggestions(prev => {
-        const existingActions = new Set(prev.map(a => a.toLowerCase().trim()));
-        const newActions = result.actions.filter(
-          action => !existingActions.has(action.toLowerCase().trim())
-        );
-        return [...prev, ...newActions];
-      });
-      setAnalysisMessage(`✅ ${result.actions.length} novas ações identificadas!`);
-      setTimeout(() => setAnalysisMessage(""), 2000);
+    // ✅ FILTRAR APENAS TRECHOS COM O COMANDO ESPECÍFICO
+    const lowerText = transcript.toLowerCase();
+    const commandRegex = /preciso que registre em ata/gi;
+    
+    if (!commandRegex.test(lowerText)) {
+      setAnalysisMessage("⚠️ Nenhum comando 'preciso que registre em ata' encontrado na transcrição");
+      setIsAnalyzing(false);
+      setTimeout(() => setAnalysisMessage(""), 3000);
+      return;
     }
+
+    // Extrair apenas os trechos ANTES de cada comando
+    const parts = transcript.split(/preciso que registre em ata/gi);
+    const actionsFromCommands: string[] = [];
+    
+    // Pega o texto antes de cada comando (exceto a primeira parte)
+    for (let i = 0; i < parts.length - 1; i++) {
+      const sentences = parts[i].split(/[.!?]+/).filter(s => s.trim().length > 0);
+      if (sentences.length > 0) {
+        const lastSentence = sentences[sentences.length - 1].trim();
+        if (lastSentence.length > 10) {
+          actionsFromCommands.push(lastSentence);
+        }
+      }
+    }
+
+    if (actionsFromCommands.length === 0) {
+      setAnalysisMessage("⚠️ Nenhuma ação clara encontrada antes dos comandos");
+      setIsAnalyzing(false);
+      setTimeout(() => setAnalysisMessage(""), 3000);
+      return;
+    }
+
+    setSuggestions(prev => {
+      const existingActions = new Set(prev.map(a => a.toLowerCase().trim()));
+      const newActions = actionsFromCommands.filter(
+        action => !existingActions.has(action.toLowerCase().trim())
+      );
+      return [...prev, ...newActions];
+    });
+    
+    setAnalysisMessage(`✅ ${actionsFromCommands.length} ações capturadas pelos comandos!`);
+    setTimeout(() => setAnalysisMessage(""), 2000);
 
     setIsAnalyzing(false);
   };
