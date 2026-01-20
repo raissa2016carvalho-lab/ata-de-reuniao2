@@ -280,23 +280,35 @@ export default function AtaReunioes() {
       return;
     }
 
-    // Extrair apenas os trechos ANTES de cada comando
+    // ✅ EXTRAIR TEXTO **DEPOIS** DE CADA COMANDO
     const parts = transcript.split(/preciso que registre em ata/gi);
     const actionsFromCommands: string[] = [];
     
-    // Pega o texto antes de cada comando (exceto a primeira parte)
-    for (let i = 0; i < parts.length - 1; i++) {
-      const sentences = parts[i].split(/[.!?]+/).filter(s => s.trim().length > 0);
+    // Para cada parte DEPOIS do comando (ignora a primeira que vem antes)
+    for (let i = 1; i < parts.length; i++) {
+      const textAfterCommand = parts[i].trim();
+      
+      // Remove vírgulas e pontos do início
+      let cleanText = textAfterCommand.replace(/^[,.\s]+/, '');
+      
+      // Pega a primeira frase completa depois do comando
+      const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      
       if (sentences.length > 0) {
-        const lastSentence = sentences[sentences.length - 1].trim();
-        if (lastSentence.length > 10) {
-          actionsFromCommands.push(lastSentence);
+        const firstSentence = sentences[0].trim();
+        
+        // Se for muito longo, pega só até 200 caracteres
+        if (firstSentence.length > 200) {
+          const shortened = firstSentence.substring(0, 200).trim();
+          actionsFromCommands.push(shortened);
+        } else if (firstSentence.length > 10) {
+          actionsFromCommands.push(firstSentence);
         }
       }
     }
 
     if (actionsFromCommands.length === 0) {
-      setAnalysisMessage("⚠️ Nenhuma ação clara encontrada antes dos comandos");
+      setAnalysisMessage("⚠️ Nenhuma ação clara encontrada depois dos comandos");
       setIsAnalyzing(false);
       setTimeout(() => setAnalysisMessage(""), 3000);
       return;
