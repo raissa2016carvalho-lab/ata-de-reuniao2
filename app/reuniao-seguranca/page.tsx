@@ -4,22 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import { analyzeTranscript } from "../actions";
 import { supabase } from "@/lib/supabase";
 
-const DEFAULT_AREAS = [
-  "ALMOXARIFADO",
-  "ALMOXARIFADO CLIENTE",
-  "CONTRATOS",
-  "COMPRAS",
-  "FROTA",
-  "FACILITIES",
-  "RECURSOS HUMANOS/ DEPARTAMENTO PESSOAL",
-  "OFICINA",
-  "SALA TECNICA",
-  "QUALIDADE/MEIO AMBIENTE",
-  "MARKETING",
-  "OPERAÇÃO",
-  "PLANEJAMENTO",
-  "SESMT",
-  "CONVIDADO EXTERNO",
+const STATES = [
+  "SESMT - Ceará",
+  "SESMT - Bahia",
+  "SESMT - Piauí",
+  "SESMT - Rio Grande do Norte",
+  "SESMT - Minas Gerais",
+  "SESMT - São Paulo",
+  "SESMT - Monitoria",
 ];
 
 // ✅ COMANDO ÚNICO E ESPECÍFICO - SÓ ESTE CRIA AÇÕES
@@ -28,9 +20,11 @@ const VOICE_COMMANDS = [
 ];
 
 interface ChecklistItem {
+  type: string;
   text: string;
   area: string;
   done: boolean;
+  time?: string;
 }
 
 interface PreviousActionItem {
@@ -38,34 +32,26 @@ interface PreviousActionItem {
   responsavel: string;
 }
 
-interface Participant {
-  id: string;
-  name: string;
-  area: string;
-}
-
-export default function AtaReunioes() {
+export default function Home() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedAreas, setSelectedAreas] = useState<Record<number, string>>({});
   const [transcript, setTranscript] = useState("");
   const [manualAction, setManualAction] = useState("");
+  const [objective, setObjective] = useState("");
   const [previousActions, setPreviousActions] = useState<PreviousActionItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [showParticipants, setShowParticipants] = useState(false);
-  const [newParticipantName, setNewParticipantName] = useState("");
-  const [newParticipantArea, setNewParticipantArea] = useState(DEFAULT_AREAS[0]);
-  
-  const [showPauta, setShowPauta] = useState(false);
-  const [objetivo, setObjetivo] = useState("");
-  const [pautaItems, setPautaItems] = useState<string[]>([""]);
-  
+  // Estados para o microfone
   const [isListening, setIsListening] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
+
+  // Timers
+  const [presentationTimes, setPresentationTimes] = useState<Record<string, number>>({});
+  const [individualTimers, setIndividualTimers] = useState<Record<string, NodeJS.Timeout>>({});
 
   // ✅ NOVO: Estados para edição de sugestões
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -74,39 +60,79 @@ export default function AtaReunioes() {
   // ✅ NOVO: Estado para visualização da transcrição
   const [showTranscript, setShowTranscript] = useState(false);
 
-  const availableResponsibles = [
-    ...participants.map(p => `${p.name} (${p.area})`),
-    ...DEFAULT_AREAS
-  ];
+  // 📝 Função para formatar texto automaticamente
+  const autoFormatText = (text: string): string => {
+    let formatted = text.trim();
+    
+    // Remover espaços múltiplos
+    formatted = formatted.replace(/\s+/g, ' ');
+    
+    // Primeira letra maiúscula
+    if (formatted.length > 0) {
+      formatted = formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    }
+    
+    // Adicionar vírgulas antes de conectores
+    const connectors = ['e ', 'mas ', 'porém ', 'então ', 'também ', 'além disso '];
+    connectors.forEach(connector => {
+      const regex = new RegExp(`\\s${connector}`, 'gi');
+      formatted = formatted.replace(regex, `, ${connector}`);
+    });
+    
+    // Adicionar ponto final se não tiver
+    if (!formatted.match(/[.!?]$/)) {
+      formatted += '.';
+    }
+    
+    // Maiúscula após pontos
+    formatted = formatted.replace(/([.!?])\s+([a-z])/g, (match, p1, p2) => {
+      return p1 + ' ' + p2.toUpperCase();
+    });
+    
+    // Adicionar espaço
+    formatted += ' ';
+    
+    return formatted;
+  };
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  if (typeof window !== "undefined") {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
       
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = "pt-BR";
+      // ✅ CONFIGURAÇÕES OTIMIZADAS
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "pt-BR";
+      recognition.maxAlternatives = 1;
 
-        recognition.onresult = (event: any) => {
-          let interimTranscript = "";
-          let finalText = "";
+      let finalTimeout: NodeJS.Timeout;
 
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcriptPiece = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalText += transcriptPiece + " ";
-            } else {
-              interimTranscript += transcriptPiece;
-            }
-          }
+      recognition.onresult = (event: any) => {
+        clearTimeout(finalTimeout);
 
-          setLiveTranscript(interimTranscript);
+        let interimTranscript = "";
+        let finalText = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcriptPiece = event.results[i][0].transcript;
           
-          // ✅ ADICIONA TUDO NA TRANSCRIÇÃO (independente de ser ação)
-          if (finalText) {
-            setTranscript(prev => prev + finalText);
+          if (event.results[i].isFinal) {
+            finalText += transcriptPiece + " ";
+          } else {
+            interimTranscript += transcriptPiece;
+          }
+        }
+
+        setLiveTranscript(interimTranscript);
+        
+        if (finalText) {
+          finalTimeout = setTimeout(() => {
+            // ✨ FORMATAÇÃO AUTOMÁTICA
+            const formattedText = autoFormatText(finalText);
+            setTranscript(prev => prev + formattedText);
             
             // ✅ SÓ CAPTURA AÇÃO COM O COMANDO ESPECÍFICO
             const lowerText = finalText.toLowerCase();
@@ -117,36 +143,82 @@ export default function AtaReunioes() {
               const parts = finalText.split(regex);
               const textBeforeCommand = parts[0].trim();
               
-              // ✅ CAPTURA O TEXTO **ANTES** DO COMANDO
               if (textBeforeCommand.length > 5) {
                 setSuggestions(prev => [...prev, textBeforeCommand]);
                 console.log(`✅ Ação capturada: "${textBeforeCommand}"`);
               }
             }
-          }
-        };
+          }, 100);
+        }
+      };
 
-        recognition.onerror = (event: any) => {
-          console.error("Erro no reconhecimento:", event.error);
-          setIsListening(false);
-        };
+      recognition.onerror = (event: any) => {
+        console.error("Erro no reconhecimento:", event.error);
+        
+        switch(event.error) {
+          case 'no-speech':
+            console.warn('⚠️ Nenhuma fala detectada. Fale mais alto ou próximo ao microfone.');
+            break;
+          case 'audio-capture':
+            alert('❌ Erro ao capturar áudio. Verifique as permissões do microfone.');
+            setIsListening(false);
+            break;
+          case 'not-allowed':
+            alert('❌ Permissão de microfone negada. Permita o acesso nas configurações do navegador.');
+            setIsListening(false);
+            break;
+          case 'network':
+            console.warn('⚠️ Erro de rede. Verifique sua conexão com a internet.');
+            break;
+          default:
+            console.error('❌ Erro desconhecido:', event.error);
+        }
+      };
 
-        recognition.onend = () => {
-          if (isListening) {
-            recognition.start();
-          }
-        };
+      // ✅ AUTO-RESTART FORÇADO
+      recognition.onend = () => {
+        console.log('🔴 Reconhecimento finalizado');
+        if (isListening) {
+          console.log('🔄 Reiniciando automaticamente...');
+          setTimeout(() => {
+            try {
+              if (recognitionRef.current && isListening) {
+                recognitionRef.current.start();
+              }
+            } catch (error) {
+              console.error('❌ Erro ao reiniciar:', error);
+              setTimeout(() => {
+                try {
+                  if (recognitionRef.current && isListening) {
+                    recognitionRef.current.start();
+                  }
+                } catch (e) {
+                  console.error('❌ Falha definitiva:', e);
+                  setIsListening(false);
+                }
+              }, 500);
+            }
+          }, 100);
+        }
+      };
 
-        recognitionRef.current = recognition;
-      }
+      recognition.onstart = () => {
+        console.log('🎤 Reconhecimento de voz iniciado');
+      };
+
+      recognitionRef.current = recognition;
+    } else {
+      console.error('❌ SpeechRecognition não suportado neste navegador. Use Google Chrome.');
+      alert('Seu navegador não suporta reconhecimento de voz. Use Google Chrome para melhor experiência.');
     }
+  }
 
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, [isListening]);
+  return () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+  };
+}, [isListening]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
@@ -162,27 +234,6 @@ export default function AtaReunioes() {
       recognitionRef.current.start();
       setIsListening(true);
     }
-  };
-
-  const handleAddParticipant = () => {
-    if (!newParticipantName.trim()) {
-      alert("Digite o nome do participante");
-      return;
-    }
-
-    const newParticipant: Participant = {
-      id: Date.now().toString(),
-      name: newParticipantName.trim(),
-      area: newParticipantArea,
-    };
-
-    setParticipants([...participants, newParticipant]);
-    setNewParticipantName("");
-    setNewParticipantArea(DEFAULT_AREAS[0]);
-  };
-
-  const handleRemoveParticipant = (id: string) => {
-    setParticipants(participants.filter(p => p.id !== id));
   };
 
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,6 +262,7 @@ export default function AtaReunioes() {
 
       const actions: PreviousActionItem[] = [];
       
+      const header = lines[0].toLowerCase();
       let entradaIdx = 0;
       let acaoIdx = 1;
       let responsavelIdx = 2;
@@ -332,11 +384,12 @@ export default function AtaReunioes() {
 
   const handleApprove = (index: number) => {
     const action = suggestions[index];
-    const area = selectedAreas[index] || availableResponsibles[0];
+    const area = selectedAreas[index] || STATES[0];
 
     setChecklist((prev) => [
       ...prev,
       {
+        type: "Ação",
         text: action,
         area,
         done: true,
@@ -351,6 +404,69 @@ export default function AtaReunioes() {
     });
   };
 
+  const handleStopTimer = (state: string) => {
+    const itemKey = state;
+    if (individualTimers[itemKey]) {
+      clearInterval(individualTimers[itemKey]);
+      const newTimers = { ...individualTimers };
+      delete newTimers[itemKey];
+      setIndividualTimers(newTimers);
+      
+      const finalTime = formatItemTime(state);
+      setChecklist(prev => 
+        prev.map(item => 
+          item.type === "Apresentação" && item.text === state
+            ? { ...item, time: finalTime }
+            : item
+        )
+      );
+    }
+  };
+
+  const handleToggleState = (state: string, checked: boolean) => {
+    const itemKey = state;
+    
+    if (checked) {
+      const timerId = setInterval(() => {
+        setPresentationTimes(prev => ({
+          ...prev,
+          [itemKey]: (prev[itemKey] || 0) + 1
+        }));
+      }, 1000);
+      
+      setIndividualTimers(prev => ({ ...prev, [itemKey]: timerId }));
+      
+      setChecklist((prev) => [
+        ...prev.filter(c => !(c.type === "Apresentação" && c.text === state)),
+        {
+          type: "Apresentação",
+          text: state,
+          area: state,
+          done: true,
+        },
+      ]);
+    } else {
+      handleStopTimer(state);
+      
+      setChecklist((prev) =>
+        prev.filter((c) => !(c.type === "Apresentação" && c.text === state))
+      );
+      
+      setPresentationTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[itemKey];
+        return newTimes;
+      });
+    }
+  };
+
+  const formatItemTime = (state: string) => {
+    const totalSeconds = presentationTimes[state] || 0;
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
   const handleToggleChecklistItem = (index: number, checked: boolean) => {
     setChecklist((prev) =>
       prev.map((item, i) => (i === index ? { ...item, done: checked } : item))
@@ -358,12 +474,22 @@ export default function AtaReunioes() {
   };
 
   const handleDownload = async () => {
-    if (checklist.length === 0) {
-      alert("Adicione pelo menos uma ação antes de exportar");
-      return;
-    }
+  const presentationItems = checklist.filter((c) => c.type === "Apresentação");
+  const actionItems = checklist.filter((c) => c.type === "Ação");
+  const allItems = [...presentationItems, ...actionItems];
 
+  if (allItems.length === 0) {
+    alert("Adicione pelo menos uma apresentação ou ação antes de exportar");
+    return;
+  }
+
+  setIsSaving(true);
+
+  try {
     const today = new Date();
+    const dueDate = new Date(today);
+    dueDate.setDate(dueDate.getDate() + 8);
+
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
     const formatDateBR = (d: Date) => {
       const day = String(d.getDate()).padStart(2, "0");
@@ -371,341 +497,107 @@ export default function AtaReunioes() {
       const year = d.getFullYear();
       return `${day}/${month}/${year}`;
     };
-    const formatDateTimeBR = (d: Date) => {
-      const day = String(d.getDate()).padStart(2, "0");
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const year = d.getFullYear();
-      const hours = String(d.getHours()).padStart(2, "0");
-      const minutes = String(d.getMinutes()).padStart(2, "0");
-      return `${day}/${month}/${year} às ${hours}:${minutes}`;
-    };
 
-    let csv = '\ufeff';
-    
-    csv += `"=== ATA DE REUNIÃO ==="\n`;
-    csv += `"Data: ${formatDateTimeBR(today)}"\n\n`;
-    
-    if (participants.length > 0) {
-      csv += `"PARTICIPANTES:"\n`;
-      participants.forEach((p, i) => {
-        csv += `"${i + 1}. ${p.name} - ${p.area}"\n`;
-      });
-      csv += `\n`;
-    }
-    
-    if (objetivo) {
-      csv += `"OBJETIVO DA REUNIÃO:"\n`;
-      csv += `"${objetivo}"\n\n`;
-    }
-    
-    const pautaPreenchida = pautaItems.filter(item => item.trim());
-    if (pautaPreenchida.length > 0) {
-      csv += `"PAUTA:"\n`;
-      pautaPreenchida.forEach((item, i) => {
-        csv += `"${i + 1}. ${item}"\n`;
-      });
-      csv += `\n`;
-    }
-    
-    csv += `"AÇÕES:"\n`;
-    csv += '"Ação","Responsável","Data","Status"\n';
+    let csv = '\ufeff"Entradas","Saídas: Decisões e ações","Responsável","Data","Status","Tempo"\n';
 
-    checklist.forEach((c) => {
+    allItems.forEach((c) => {
+      const entrada = c.type;
+      const saidas = c.text;
+      const responsavel = c.area;
+      const data = formatDate(dueDate);
       const status = c.done ? "Concluído" : "Pendente";
-      csv += `"${c.text}","${c.area}","${formatDate(today)}","${status}"\n`;
+      const tempo = c.time || "";
+
+      csv += `"${entrada}","${saidas}","${responsavel}","${data}","${status}","${tempo}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `ATA_REUNIAO_GERAL_${formatDate(today)}.csv`;
+    a.download = `RELATORIO_REUNIAO_${formatDate(today)}.csv`;
     a.click();
 
-    // ✅ SALVAR NO SUPABASE
-    try {
-      const completedActions = checklist.filter(c => c.done).length;
-      const pendingActions = checklist.filter(c => !c.done).length;
+    const completedActions = actionItems.filter(c => c.done).length;
+    const pendingActions = actionItems.filter(c => !c.done).length;
 
-      const newMeeting = {
-        id: `geral-${formatDate(today)}-${Date.now()}`,
-        date: formatDateBR(today),
-        participants: participants,
-        objetivo: objetivo || null,
-        pauta: pautaPreenchida,
-        transcript: transcript || null,
-        actions: checklist,
-        total_actions: checklist.length,
-        completed_actions: completedActions,
-        pending_actions: pendingActions,
-        csv_data: csv,
-      };
+    const newMeeting = {
+      id: `${formatDate(today)}-seguranca-${Date.now()}`,
+      date: formatDateBR(today),
+      presentations: presentationItems.length,
+      actions: actionItems.length,
+      completed: completedActions,
+      pending: pendingActions,
+      csv_data: csv,
+      tipo: 'seguranca'
+    };
 
-      const { data: existingMeeting } = await supabase
-        .from('meetings_general')
-        .select('id')
-        .eq('id', newMeeting.id)
-        .single();
+    const { error } = await supabase
+      .from('meetings')
+      .insert([newMeeting]);
 
-      if (existingMeeting) {
-        const { error } = await supabase
-          .from('meetings_general')
-          .update(newMeeting)
-          .eq('id', newMeeting.id);
+    if (error) throw error;
+    
+    alert("✅ Reunião salva com sucesso!\n\nAcesse 'Registros Gerais' para ver o histórico.");
 
-        if (error) throw error;
-        alert("✅ Ata atualizada com sucesso no banco de dados!");
-      } else {
-        const { error } = await supabase
-          .from('meetings_general')
-          .insert([newMeeting]);
+  } catch (error) {
+    console.error('Erro ao salvar reunião:', error);
+    alert("❌ Erro ao salvar reunião no banco de dados. Verifique a conexão com o Supabase.");
+  } finally {
+    setIsSaving(false);
+  }
+};
 
-        if (error) throw error;
-        alert("✅ Ata salva com sucesso no banco de dados!");
-      }
-    } catch (error) {
-      console.error('Erro ao salvar no Supabase:', error);
-      alert("❌ Erro ao salvar no banco de dados. O arquivo CSV foi baixado normalmente.");
-    }
-  };
 
-  const handleAddPautaItem = () => {
-    setPautaItems([...pautaItems, ""]);
-  };
-
-  const handleRemovePautaItem = (index: number) => {
-    if (pautaItems.length > 1) {
-      setPautaItems(pautaItems.filter((_, i) => i !== index));
-    }
-  };
-
-  const handlePautaItemChange = (index: number, value: string) => {
-    const newItems = [...pautaItems];
-    newItems[index] = value;
-    setPautaItems(newItems);
-  };
+  const completedItems = checklist.filter((c) => c.done);
+  const pendingItems = checklist.filter((c) => !c.done);
 
   return (
     <div className="p-5 md:p-8">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
         <div className="bg-gradient-to-r from-[#1e3c72] to-[#2a5298] text-white py-6 px-8">
           <div className="flex items-center justify-between">
             <div className="text-left">
               <h2 className="text-3xl font-bold mb-1">
-                🎤 Ata Reuniões Gerais
+                Reunião Semanal de Segurança
               </h2>
               <p className="opacity-90 text-sm md:text-base">
-                Transcrição e análise inteligente de reuniões
+                Há 38 anos, unindo energias para ir mais longe!
               </p>
             </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setShowParticipants(!showParticipants)}
-                className={`px-6 py-3 font-semibold rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 ${
-                  showParticipants 
-                    ? "bg-amber-500 text-white" 
-                    : "bg-white text-[#1e3c72]"
-                }`}
-              >
-                👥 {showParticipants ? "Ocultar" : "Participantes"} {participants.length > 0 && `(${participants.length})`}
-              </button>
-              <button
-                onClick={() => setShowPauta(!showPauta)}
-                className={`px-6 py-3 font-semibold rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 ${
-                  showPauta 
-                    ? "bg-emerald-500 text-white" 
-                    : "bg-white text-[#1e3c72]"
-                }`}
-              >
-                📋 {showPauta ? "Ocultar Pauta" : "Incluir Pauta"}
-              </button>
-              <a
-                href="/registros-gerais"
-                className="px-6 py-3 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
-              >
-                📋 Ver Registros
-              </a>
+            <div className="hidden md:flex items-center gap-4">
               <a
                 href="/"
-                className="px-6 py-3 bg-white text-[#1e3c72] font-semibold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                className="px-6 py-3 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
               >
                 ← Voltar
+              </a>
+              <a
+                href="/ata-reunioes"
+                className="px-6 py-3 bg-white text-[#1e3c72] font-semibold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+              >
+                🎤 Ata Reuniões Gerais
+              </a>
+              <a
+                href="/registros"
+                className="px-6 py-3 bg-white text-[#1e3c72] font-semibold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+              >
+                📋 Registros Gerais
               </a>
               <img
                 src="/LogoBeqbranca.png"
                 alt="Logo Beq"
-                className="w-32 h-auto hidden md:block"
+                width={140}
+                height={40}
+                className="object-contain"
+                onError={(e) => {
+                  console.error("Erro ao carregar logo:", e);
+                  e.currentTarget.style.display = 'none';
+                }}
               />
             </div>
           </div>
         </div>
 
-        {/* Seção de Participantes */}
-        {showParticipants && (
-          <section className="p-8 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-orange-50">
-            <div className="max-w-4xl mx-auto">
-              <div className="flex items-center gap-3 mb-6">
-                <span className="text-4xl">👥</span>
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-800">Participantes da Reunião</h3>
-                  <p className="text-sm text-gray-600">Adicione os participantes que aparecerão como responsáveis pelas ações</p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl p-6 shadow-md mb-6">
-                <div className="flex gap-4 items-end">
-                  <div className="flex-1">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Nome do Participante
-                    </label>
-                    <input
-                      type="text"
-                      value={newParticipantName}
-                      onChange={(e) => setNewParticipantName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && newParticipantName.trim()) {
-                          handleAddParticipant();
-                        }
-                      }}
-                      placeholder="Ex: João Silva"
-                      className="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Área/Setor
-                    </label>
-                    <select
-                      value={newParticipantArea}
-                      onChange={(e) => setNewParticipantArea(e.target.value)}
-                      className="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
-                    >
-                      {DEFAULT_AREAS.map((area) => (
-                        <option key={area} value={area}>{area}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    onClick={handleAddParticipant}
-                    className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg"
-                  >
-                    ➕ Adicionar
-                  </button>
-                </div>
-              </div>
-
-              {participants.length > 0 && (
-                <div className="bg-white rounded-xl p-6 shadow-md">
-                  <h4 className="text-sm font-bold text-gray-700 mb-4">
-                    Participantes Cadastrados ({participants.length})
-                  </h4>
-                  <div className="space-y-2">
-                    {participants.map((participant) => (
-                      <div
-                        key={participant.id}
-                        className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">👤</span>
-                          <div>
-                            <p className="font-semibold text-gray-800">{participant.name}</p>
-                            <p className="text-sm text-gray-600">{participant.area}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleRemoveParticipant(participant.id)}
-                          className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-semibold rounded-lg transition-all"
-                          title="Remover participante"
-                        >
-                          🗑️ Remover
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {participants.length === 0 && (
-                <div className="bg-white rounded-xl p-8 shadow-md text-center">
-                  <p className="text-gray-500">
-                    Nenhum participante cadastrado ainda. Adicione participantes para que apareçam como responsáveis nas ações.
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* Pauta da Reunião */}
-        {showPauta && (
-          <section className="p-8 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-            <div className="max-w-4xl mx-auto">
-              <div className="flex items-center gap-3 mb-6">
-                <span className="text-4xl">📋</span>
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-800">Objetivo e Pauta da Reunião</h3>
-                  <p className="text-sm text-gray-600">Defina o objetivo e os assuntos que serão discutidos</p>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="bg-white rounded-xl p-6 shadow-md">
-                  <label className="block text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                    🎯 Objetivo da Reunião
-                  </label>
-                  <textarea
-                    value={objetivo}
-                    onChange={(e) => setObjetivo(e.target.value)}
-                    placeholder="Ex: Revisar indicadores de segurança, discutir ações preventivas e alinhar estratégias para o próximo período"
-                    className="w-full h-24 p-4 border-2 border-gray-200 rounded-xl resize-y focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-base"
-                  />
-                </div>
-
-                <div className="bg-white rounded-xl p-6 shadow-md">
-                  <div className="flex items-center justify-between mb-4">
-                    <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                      📌 Pauta da Reunião
-                    </label>
-                    <button
-                      onClick={handleAddPautaItem}
-                      className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-all shadow-sm hover:shadow-md"
-                    >
-                      ➕ Adicionar Assunto
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {pautaItems.map((item, index) => (
-                      <div key={index} className="flex gap-3 items-start">
-                        <div className="flex-shrink-0 w-8 h-10 flex items-center justify-center">
-                          <span className="text-gray-600 font-semibold">{index + 1}.</span>
-                        </div>
-                        <input
-                          type="text"
-                          value={item}
-                          onChange={(e) => handlePautaItemChange(index, e.target.value)}
-                          placeholder={`Ex: ${index === 0 ? "Análise de indicadores de segurança" : index === 1 ? "Revisão de procedimentos" : "Outro assunto"}`}
-                          className="flex-1 p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                        />
-                        {pautaItems.length > 1 && (
-                          <button
-                            onClick={() => handleRemovePautaItem(index)}
-                            className="flex-shrink-0 px-3 py-2 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-semibold rounded-lg transition-all"
-                            title="Remover este assunto"
-                          >
-                            🗑️
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Ações da Reunião Anterior */}
         <section className="p-8 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Ações da Reunião Anterior
@@ -757,7 +649,51 @@ export default function AtaReunioes() {
           </div>
         </section>
 
-        {/* Transcrição COM MICROFONE */}
+        <section className="p-8 border-b border-gray-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-5">
+            Apresentação dos Números de Segurança
+          </h3>
+          <div className="space-y-3">
+            {STATES.map((state) => {
+              const isChecked = checklist.some(c => c.type === "Apresentação" && c.text === state);
+              const currentTime = formatItemTime(state);
+              const hasSavedTime = checklist.some(c => c.type === "Apresentação" && c.text === state && c.time);
+              
+              return (
+                <div key={state} className="flex gap-3 items-start p-4 border-2 rounded-xl transition-all">
+                  <label className="flex-1 flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all flex-grow">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={(e) => handleToggleState(state, e.target.checked)}
+                      className="w-5 h-5 accent-emerald-500"
+                    />
+                    <span className="font-semibold">{state}</span>
+                  </label>
+                  
+                  <div className="flex flex-col gap-1 flex-shrink-0">
+                    <span className={`px-3 py-1 rounded-full text-sm font-mono text-right min-w-[70px] ${
+                      isChecked 
+                        ? 'bg-emerald-100 text-emerald-800 font-bold shadow-md' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {hasSavedTime ? checklist.find(c => c.type === "Apresentação" && c.text === state)?.time || currentTime : currentTime}
+                    </span>
+                    {isChecked && (
+                      <button
+                        onClick={() => handleStopTimer(state)}
+                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow-md transition-all text-center whitespace-nowrap"
+                      >
+                        ⏹️ Parar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
         <section className="p-8 border-b border-gray-200">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-xl font-bold text-gray-800">
@@ -892,7 +828,7 @@ export default function AtaReunioes() {
                           </td>
                           <td className="px-3 py-2 align-top">
                             <select
-                              value={selectedAreas[i] || availableResponsibles[0]}
+                              value={selectedAreas[i] || STATES[0]}
                               onChange={(e) =>
                                 setSelectedAreas((prev) => ({
                                   ...prev,
@@ -902,20 +838,9 @@ export default function AtaReunioes() {
                               className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
                               disabled={editingIndex === i}
                             >
-                              {participants.length > 0 && (
-                                <optgroup label="👥 Participantes">
-                                  {participants.map((p) => (
-                                    <option key={p.id} value={`${p.name} (${p.area})`}>
-                                      {p.name} ({p.area})
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                              <optgroup label="🏢 Áreas Padrão">
-                                {DEFAULT_AREAS.map((area) => (
-                                  <option key={area} value={area}>{area}</option>
-                                ))}
-                              </optgroup>
+                              {STATES.map((state) => (
+                                <option key={state} value={state}>{state}</option>
+                              ))}
                             </select>
                           </td>
                           <td className="px-3 py-2 text-center align-top">
@@ -1034,8 +959,8 @@ export default function AtaReunioes() {
                         </div>
                         <div className="space-y-1 text-sm text-green-800">
                           <p>• <strong>{suggestions.length}</strong> ações identificadas</p>
-                          <p>• <strong>{checklist.length}</strong> ações aprovadas</p>
-                          <p>• <strong>{suggestions.length + checklist.length}</strong> total</p>
+                          <p>• <strong>{checklist.filter(c => c.type === "Ação").length}</strong> ações aprovadas</p>
+                          <p>• <strong>{suggestions.length + checklist.filter(c => c.type === "Ação").length}</strong> total</p>
                         </div>
                       </div>
                       
@@ -1057,7 +982,6 @@ export default function AtaReunioes() {
           </section>
         )}
 
-        {/* Checklist Final */}
         <section className="p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-5">
             Checklist Final ({checklist.length} itens)
@@ -1076,10 +1000,15 @@ export default function AtaReunioes() {
                       className="w-5 h-5 accent-emerald-500"
                     />
                     <span className="flex-1">
-                      <strong>Ação:</strong> {item.text}
+                      <strong>{item.type}:</strong> {item.text}
                       <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                         {item.area}
                       </span>
+                      {item.time && (
+                        <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full font-mono">
+                          {item.time}
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -1088,10 +1017,10 @@ export default function AtaReunioes() {
           )}
           <button
             onClick={handleDownload}
-            disabled={checklist.length === 0}
+            disabled={checklist.length === 0 || isSaving}
             className="w-full py-4 bg-[#217346] text-white font-semibold text-lg rounded-xl hover:bg-[#185c37] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            📥 Baixar e Salvar Relatório ({checklist.length} itens)
+            {isSaving ? "💾 Salvando..." : `📥 Baixar e Salvar Relatório (${checklist.length} itens)`}
           </button>
         </section>
       </div>
