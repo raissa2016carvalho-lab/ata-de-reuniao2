@@ -141,11 +141,19 @@ export default function Home() {
             if (commandFound) {
               const regex = new RegExp(commandFound, "i");
               const parts = finalText.split(regex);
-              const textBeforeCommand = parts[0].trim();
               
-              if (textBeforeCommand.length > 5) {
-                setSuggestions(prev => [...prev, textBeforeCommand]);
-                console.log(`✅ Ação capturada: "${textBeforeCommand}"`);
+              // ✅ PEGA O TEXTO **DEPOIS** DO COMANDO (não antes)
+              if (parts.length > 1) {
+                const textAfterCommand = parts[1].trim().replace(/^[,.\s]+/, '');
+                
+                if (textAfterCommand.length > 5) {
+                  // Pega só a primeira frase
+                  const firstSentence = textAfterCommand.split(/[.!?]/)[0].trim();
+                  if (firstSentence.length > 5) {
+                    setSuggestions(prev => [...prev, firstSentence]);
+                    console.log(`✅ Ação capturada: "${firstSentence}"`);
+                  }
+                }
               }
             }
           }, 100);
