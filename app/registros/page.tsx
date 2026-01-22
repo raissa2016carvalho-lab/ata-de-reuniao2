@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { supabase, Meeting } from "@/lib/supabase";
+import MeetingDetailsModal from "@/components/MeetingDetailsModal";
 
 export default function RegistrosPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedMeeting, setSelectedMeeting] = useState<string | null>(null);
+  const [selectedMeeting, setSelectedMeeting] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Carregar reuniões do Supabase
   useEffect(() => {
@@ -53,6 +55,16 @@ export default function RegistrosPage() {
       alert('Erro ao excluir reunião.');
     }
   }
+
+  const handleViewDetails = (meeting: any) => {
+    setSelectedMeeting(meeting);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedMeeting(null);
+  };
 
   const totalMeetings = meetings.length;
   const totalActions = meetings.reduce((sum, m) => sum + m.actions, 0);
@@ -213,6 +225,12 @@ export default function RegistrosPage() {
                       <td className="px-6 py-4 text-center">
                         <div className="flex gap-2 justify-center">
                           <button
+                            onClick={() => handleViewDetails(meeting)}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-all"
+                          >
+                            👁️ Ver Detalhes
+                          </button>
+                          <button
                             onClick={() => {
                               const currentMeeting = meetings.find(m => m.id === meeting.id);
                               if (currentMeeting?.csv_data) {
@@ -255,6 +273,13 @@ export default function RegistrosPage() {
           <p className="mt-1">Há 38 anos, unindo energias para ir mais longe!</p>
         </div>
       </div>
+
+      {/* Modal de Detalhes */}
+      <MeetingDetailsModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        meeting={selectedMeeting}
+      />
     </div>
   );
 }
